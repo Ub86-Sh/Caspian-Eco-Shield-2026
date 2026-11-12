@@ -3,3 +3,5 @@ uvicorn
 python-multipart
 numpy
 librosa
+transformers
+torch

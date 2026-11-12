@@ -1,6 +1,7 @@
+*,*::before,*::after{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','SF Pro Display','Helvetica Neue',sans-serif}
 :root{--bg:#242B20;--green:#48543A;--sand:#F1E8D8;--terra:#D97B50;--gold:#D8C66A;--water:#83B7AC;--crit:#E5604D;--muted:#6f6a55;color-scheme:dark}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--sand);font-family:system-ui,'Segoe UI',sans-serif;overflow:hidden}
+body{margin:0;background:var(--bg);color:var(--sand);font-family:'Inter',system-ui,sans-serif;overflow:hidden}
 #root{height:100vh}
 button{font-family:inherit}
 .app{display:grid;grid-template-columns:240px 1fr;height:100vh}
@@ -67,7 +68,9 @@ button{font-family:inherit}
 .dot{width:16px;height:16px;border-radius:50%;position:relative;border:2px solid var(--sand)}
 .dot.ok{background:var(--water);color:var(--water)}
 .dot.crit{background:var(--crit);color:var(--crit)}
-.dot.inc{background:var(--terra);color:var(--terra);border-radius:3px;transform:rotate(45deg)}
+.dot.inc{background:var(--crit);color:var(--crit);animation:blink 1s infinite}
+.dot.inc::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:2px solid currentColor;animation:pulse 1.2s infinite}
+@keyframes blink{50%{opacity:.35}}
 .dot.ok::after,.dot.crit::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:2px solid currentColor;animation:pulse 1.8s infinite}
 @keyframes pulse{0%{transform:scale(.6);opacity:1}100%{transform:scale(2);opacity:0}}
 .chart{width:100%;height:110px;display:block}

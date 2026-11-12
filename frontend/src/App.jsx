@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
-const API = 'http://localhost:8000'
+const API = `http://${window.location.hostname}:8000`
 const TYPES = { boat: 'Браконьерский катер', gunshot: 'Выстрел', spill: 'Сброс / аномалия' }
 const NAV = [
-  ['home', 'Главная', '🏠'], ['map', 'Карта мониторинга', '🗺️'], ['migration', 'Миграция животных', '🦭'],
-  ['audio', 'Акустический анализ', '🎧'], ['sat', 'Спутниковый анализ', '🛰️'], ['water', 'Водная аналитика', '💧'],
-  ['incidents', 'Инциденты', '⚠️'], ['settings', 'Настройки', '⚙️'],
+  ['home', 'Главная'], ['map', 'Карта мониторинга'], ['migration', 'Миграция животных'],
+  ['audio', 'Акустический анализ'], ['water', 'Водная аналитика'],
+  ['incidents', 'Инциденты'], ['settings', 'Настройки'],
 ]
 const GOLD = '#D8C66A', WATER = '#83B7AC'
 const riskColor = r => (r > 0.7 ? '#E5604D' : r > 0.4 ? '#D8C66A' : '#83B7AC')
@@ -77,8 +77,9 @@ function Wave({ seed, type, crit }) {
 function MapView({ data, layers, onPick, focus, center = [44.5, 47.8], zoom = 6 }) {
   const el = useRef(null), map = useRef(null), grp = useRef({})
   useEffect(() => {
-    const m = L.map(el.current, { zoomControl: false }).setView(center, zoom)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', { attribution: '© OpenStreetMap © CARTO' }).addTo(m)
+    const m = L.map(el.current, { zoomControl: false, attributionControl: false }).setView(center, zoom)
+L.control.attribution({ prefix: false }).addTo(m)
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles © Esri', maxZoom: 12 }).addTo(m)
     L.control.zoom({ position: 'bottomright' }).addTo(m)
     CITIES.forEach(([n, a, b]) => L.marker([a, b], { icon: L.divIcon({ className: '', html: `<div class="city">● ${n}</div>`, iconSize: [90, 14] }), interactive: false }).addTo(m))
     L.marker([41.9, 50.8], { icon: L.divIcon({ className: '', html: '<div class="sea-l">КАСПИЙСКОЕ МОРЕ</div>', iconSize: [220, 20] }), interactive: false }).addTo(m)
@@ -116,7 +117,6 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [fStatus, setFStatus] = useState('all')
   const [fType, setFType] = useState('all')
-  const [cmp, setCmp] = useState(50)
   const [prefs, setPrefs] = useState({ push: true, sound: true, sms: false, zones: true, labels: true })
 
   async function load() {
@@ -133,7 +133,7 @@ export default function App() {
     try {
       const r = await fetch(API + '/api/analyze-audio', { method: 'POST', body: fd })
       if (!r.ok) throw new Error()
-      setAudio(await r.json())
+      setAudio(await r.json()); load()
     } catch { setAudio({ error: 'Не удалось проанализировать файл' }) }
     setBusy(false); e.target.value = ''
   }
@@ -158,17 +158,17 @@ export default function App() {
   return (
     <div className="app">
       <aside className="side">
-        <div className="logo">🛡 Эко-Щит Каспия<small>Помощник инспектора ООПТ</small></div>
-        {NAV.map(([k, n, ic]) => <button key={k} className={'nav ' + (tab === k ? 'on' : '')} onClick={() => setTab(k)}><span>{ic}</span>{n}</button>)}
+        <div className="logo"> Эко-Щит Каспия<small>Помощник инспектора ООПТ</small></div>
+        {NAV.map(([k, n]) => <button key={k} className={'nav ' + (tab === k ? 'on' : '')} onClick={() => setTab(k)}>{n}</button>)}
       </aside>
 
       <div className="col">
         <div className="top">
           <h1>{title}</h1><span className="sp" />
-          <span className={'conn ' + (err ? 'bad' : '')}>{err ? '⚠ нет связи с сервером' : `● ${buoys.length} буев онлайн`}</span>
+          <span className={'conn ' + (err ? 'bad' : '')}>{err ? ' нет связи с сервером' : ` ${buoys.length} буев онлайн`}</span>
           <input className="search" placeholder="Поиск по системе…" />
           <button className="bell" onClick={() => setTab('incidents')}>🔔{newCount > 0 && <b>{newCount}</b>}</button>
-          <div className="me"><i>И</i><div>Инспектор<br /><span className="hint">Астраханский заповедник</span></div></div>
+          <div className="me"><i>И</i><div>Инспектор<br /><span className="hint">Дагестанский заповедник</span></div></div>
         </div>
 
         <div className={'content ' + (tab === 'map' ? 'flush' : '')}>
@@ -207,7 +207,7 @@ export default function App() {
               <div className="ov r">
                 <h4>Выбранный объект</h4>
                 {!pick && <div className="hint">Нажмите на маркер или зону на карте.</div>}
-                {pick?.kind === 'buoy' && <div><b>{pick.obj.name}</b><br />Вода: {pick.obj.temp}°C<br />Солёность: {pick.obj.salinity}‰<br />Статус: {pick.obj.status === 'critical' ? '🔴 тревога' : '🟢 норма'}</div>}
+                {pick?.kind === 'buoy' && <div><b>{pick.obj.name}</b><br />Вода: {pick.obj.temp}°C<br />Солёность: {pick.obj.salinity}‰<br />Статус: {pick.obj.status === 'critical' ? ' тревога' : ' норма'}</div>}
                 {pick?.kind === 'zone' && <div><b>{pick.obj.name}</b><br />Риск: {Math.round(pick.obj.risk * 100)}%<br /><span className="hint">{pick.obj.reason}</span></div>}
                 {pick?.kind === 'incident' && <div><b>{TYPES[pick.obj.type]}</b><br />{pick.obj.message}<br />Статус: {pick.obj.status}<br /><button className="btn" style={{ marginTop: 8 }} onClick={() => openInc(pick.obj)}>Открыть инцидент</button></div>}
               </div>
@@ -255,30 +255,6 @@ export default function App() {
             </div>
           )}
 
-          {tab === 'sat' && (
-            <div className="g2" style={{ marginTop: 0 }}>
-              <Card title="Сравнение снимков" right={<span className="hint">демо-изображения</span>}>
-                <div className="cmp">
-                  <div className="img a" />
-                  <div className="img b" style={{ clipPath: `inset(0 ${100 - cmp}% 0 0)` }}>
-                    <div className="sus" style={{ left: '28%', top: '40%', width: 70, height: 34 }} />
-                    <div className="sus" style={{ left: '55%', top: '62%', width: 50, height: 26 }} />
-                  </div>
-                  <span className="cap" style={{ left: 10 }}>12.09.2026</span><span className="cap" style={{ right: 10 }}>12.11.2026</span>
-                  <input type="range" min="5" max="95" value={cmp} onChange={e => setCmp(+e.target.value)} />
-                </div>
-              </Card>
-              <div className="stack">
-                <Card title="Обнаружено ИИ (демо)">
-                  <div className="ev high"><div>Скопление лодок<small>вероятность 87%</small></div><span className="tag crit">угроза</span></div>
-                  <div className="ev high"><div>Возможные сети в воде<small>вероятность 74%</small></div><span className="tag crit">угроза</span></div>
-                  <div className="ev"><div>Изменение береговой линии<small>вероятность 91%</small></div><span className="tag">наблюдение</span></div>
-                </Card>
-                <Stat label="Изменений между датами" value="3" sub="требуют проверки" />
-              </div>
-            </div>
-          )}
-
           {tab === 'water' && (<>
             <div className="g3">
               <Stat label="Температура воды" value={hydro?.avg_temp ?? '–'} unit="°C" sub="среднее по буям" />
@@ -316,7 +292,7 @@ export default function App() {
                 {sel && (<>
                   <b style={{ fontSize: 18 }}>{TYPES[sel.type]} №{sel.id}</b>
                   <div className="sub">{sel.message}</div>
-                  <div className="mt">Точность ИИ: <b>{Math.round(sel.confidence * 100)}%</b><br />Приоритет: <b>{sel.priority === 'high' ? 'ВЫСОКИЙ' : 'средний'}</b><br />{sel.risk_zone ? <span className="tag crit">⚠ внутри зоны риска</span> : 'Вне зон риска'}<br />Статус: {sel.status}</div>
+                  <div className="mt">Точность ИИ: <b>{Math.round(sel.confidence * 100)}%</b><br />Приоритет: <b>{sel.priority === 'high' ? 'ВЫСОКИЙ' : 'средний'}</b><br />{sel.risk_zone ? <span className="tag crit"> внутри зоны риска</span> : 'Вне зон риска'}<br />Статус: {sel.status}</div>
                   <Wave seed={sel.id * 11} type={sel.type} crit />
                   <div className="row">
                     <button className="btn alt" onClick={() => play(sel.type)}>▶ Прослушать</button>
@@ -331,7 +307,7 @@ export default function App() {
             <div className="g3" style={{ marginTop: 0 }}>
               <Card title="Профиль инспектора">
                 <div className="sw">Должность<b>Инспектор ООПТ</b></div>
-                <div className="sw">Территория<b>Астраханский заповедник</b></div>
+                <div className="sw">Территория<b>Дагестанский заповедник</b></div>
                 <div className="sw">Смена<b>Дневная</b></div>
               </Card>
               <Card title="Уведомления">
@@ -343,7 +319,6 @@ export default function App() {
                 {[['zones', 'Показывать зоны риска'], ['labels', 'Подписи городов']].map(([k, n]) => (
                   <div className="sw" key={k}>{n}<input type="checkbox" checked={prefs[k]} onChange={() => setPrefs(p => ({ ...p, [k]: !p[k] }))} /></div>
                 ))}
-                <div className="sw">Сервер<b>{API}</b></div>
                 <div className="sw">Обновление данных<b>3 сек</b></div>
               </Card>
             </div>

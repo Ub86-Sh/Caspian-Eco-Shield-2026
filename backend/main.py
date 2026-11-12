@@ -107,9 +107,42 @@ async def telemetry_loop():
                 b["status"] = "safe"
         await asyncio.sleep(3)
 
+import threading
+from starlette.concurrency import run_in_threadpool
+
+CLF = {"pipe": None, "state": "loading"}
+GUN_KEYS = ("gunshot", "gunfire", "machine gun", "fusillade", "cap gun", "explosion", "artillery")
+BOAT_KEYS = ("boat", "ship", "motor", "engine", "outboard")
+
+def load_model():
+    try:
+        from transformers import pipeline
+        CLF["pipe"] = pipeline("audio-classification", model="MIT/ast-finetuned-audioset-10-10-0.4593")
+        CLF["state"] = "ready"
+        print("ИИ-модель звука загружена")
+    except Exception as e:
+        CLF["state"] = "error"
+        print("Модель не загрузилась, работает эвристика:", e)
+
+def classify_ai(y):
+    out = CLF["pipe"]({"raw": y.astype("float32"), "sampling_rate": 16000}, top_k=25)
+    def best(keys):
+        return max([o["score"] for o in out if any(k in o["label"].lower() for k in keys)] or [0.0])
+    gun, boat = best(GUN_KEYS), best(BOAT_KEYS)
+    if gun >= 0.2 and gun >= boat:
+        return "Выстрел", gun
+    if boat >= 0.2:
+        return "Браконьерский катер", boat
+    return "Шум волн/Норма", max(0.6, 1 - max(gun, boat))
+
 @app.on_event("startup")
 async def startup():
     asyncio.create_task(telemetry_loop())
+    threading.Thread(target=load_model, daemon=True).start()
+
+@app.get("/api/model-status")
+def model_status():
+    return {"audio_model": CLF["state"]}
 
 # ---------- Эндпоинты ----------
 @app.get("/api/state")
@@ -146,16 +179,30 @@ def simulate():
     return add_incident(kind, round(lat, 4), round(lon, 4), conf, msgs[kind], b["id"])
 
 @app.post("/api/analyze-audio")
-async def analyze_audio(file: UploadFile = File(...)):
+async def analyze_audio(file: UploadFile = File(...), buoy_id: int | None = None):
     data = await file.read()
     try:
         import librosa
         y, sr = librosa.load(io.BytesIO(data), sr=16000, mono=True, duration=10)
-        spec = np.abs(np.fft.rfft(y))
-        freqs = np.fft.rfftfreq(len(y), 1 / sr)
-        low = spec[(freqs > 50) & (freqs < 500)].sum()      # мотор
+        if len(y) < 1600:
+            raise ValueError("пустой файл")
+    except Exception:
+        raise HTTPException(400, "Не удалось прочитать аудиофайл")
+
+    spec = np.abs(np.fft.rfft(y))
+    freqs = np.fft.rfftfreq(len(y), 1 / sr)
+    bands = [float(x.mean()) for x in np.array_split(spec, 32)]
+    m = max(bands) or 1
+    spectrum = [round(s / m, 3) for s in bands]
+
+    engine = "AST (AudioSet)"
+    if CLF["pipe"] is not None:
+        label, conf = await run_in_threadpool(classify_ai, y)
+    else:
+        engine = "эвристика (модель ещё грузится)"
+        low = spec[(freqs > 50) & (freqs < 500)].sum()
         mid = spec[(freqs >= 500) & (freqs < 2000)].sum()
-        high = spec[(freqs >= 2000)].sum()
+        high = spec[freqs >= 2000].sum()
         total = low + mid + high + 1e-9
         peak = float(np.max(np.abs(y)) / (np.mean(np.abs(y)) + 1e-9))
         if peak > 25 and high / total > 0.15:
@@ -164,15 +211,18 @@ async def analyze_audio(file: UploadFile = File(...)):
             label, conf = "Браконьерский катер", 0.75 + 0.2 * (low / total)
         else:
             label, conf = "Шум волн/Норма", 0.7 + 0.2 * (mid / total)
-        # 32 полосы для спектрограммы
-        bands = np.array_split(spec, 32)
-        spectrum = [float(x.mean()) for x in bands]
-        m = max(spectrum) or 1
-        spectrum = [round(s / m, 3) for s in spectrum]
-    except Exception:
-        raise HTTPException(400, "Не удалось прочитать аудиофайл")
-    return {"label": label, "confidence": round(min(conf, 0.99) * 100, 1),
-            "spectrum": spectrum}
+
+    conf = min(float(conf), 0.99)
+    incident = None
+    if label != "Шум волн/Норма":
+        b = next((x for x in BUOYS if x["id"] == buoy_id), None) or random.choice(BUOYS)
+        kind = "gunshot" if label == "Выстрел" else "boat"
+        lat = round(b["lat"] + random.uniform(-0.04, 0.04), 4)
+        lon = round(b["lon"] + random.uniform(-0.04, 0.04), 4)
+        incident = add_incident(kind, lat, lon, conf, f"ИИ-анализ записи: {label}, уверенность {conf*100:.1f}%", b["id"])
+    return {"label": label, "confidence": round(conf * 100, 1), "spectrum": spectrum,
+            "engine": engine, "incident": incident}
+
 
 @app.post("/api/incidents/{incident_id}/dispatch")
 def dispatch(incident_id: int):
