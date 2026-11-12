@@ -1,0 +1,613 @@
+/* animations.css - Интерактивность и микроанимации для Caspian Eco Shield */
+
+/* ============================================
+   ГЛОБАЛЬНЫЕ НАСТРОЙКИ АНИМАЦИЙ
+   ============================================ */
+
+:root {
+    --transition-fast: 150ms ease-out;
+    --transition-normal: 250ms ease-out;
+    --transition-slow: 400ms ease-out;
+    --shadow-hover: 0 4px 12px rgba(36, 43, 32, 0.15);
+    --shadow-active: 0 2px 6px rgba(36, 43, 32, 0.2);
+}
+
+/* Поддержка prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ============================================
+   1. БОКОВАЯ НАВИГАЦИЯ
+   ============================================ */
+
+.sidebar nav ul li {
+    position: relative;
+    transition: all var(--transition-normal);
+}
+
+.sidebar nav ul li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 4px;
+    height: 0;
+    background: #D97B50;
+    transition: height var(--transition-normal);
+    border-radius: 0 2px 2px 0;
+}
+
+.sidebar nav ul li:hover::before {
+    height: 60%;
+}
+
+.sidebar nav ul li.active::before {
+    height: 80%;
+}
+
+.sidebar nav ul li a {
+    transition: all var(--transition-normal);
+    display: flex;
+    align-items: center;
+    padding: 12px 20px;
+    border-radius: 8px;
+}
+
+.sidebar nav ul li:hover {
+    background: rgba(72, 84, 58, 0.15);
+}
+
+.sidebar nav ul li:hover a {
+    color: #D8C66A;
+    transform: translateX(4px);
+}
+
+.sidebar nav ul li.active {
+    background: rgba(72, 84, 58, 0.25);
+}
+
+.sidebar nav ul li.active a {
+    color: #D97B50;
+    font-weight: 600;
+}
+
+.sidebar nav ul li a i {
+    transition: transform var(--transition-normal);
+    margin-right: 12px;
+}
+
+.sidebar nav ul li:hover a i {
+    transform: scale(1.15);
+}
+
+/* Анимация появления содержимого при переключении вкладок */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.content-section {
+    animation: fadeInUp var(--transition-slow);
+}
+
+/* ============================================
+   2. КАРТОЧКИ И КНОПКИ
+   ============================================ */
+
+.card {
+    transition: all var(--transition-normal);
+    cursor: pointer;
+    position: relative;
+}
+
+.card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border: 2px solid transparent;
+    transition: all var(--transition-normal);
+    pointer-events: none;
+}
+
+.card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-hover);
+}
+
+.card:hover::after {
+    border-color: rgba(131, 183, 172, 0.3);
+}
+
+.card:active {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-active);
+}
+
+/* Карточки датчиков */
+.sensor-card {
+    transition: all var(--transition-normal);
+    position: relative;
+    overflow: hidden;
+}
+
+.sensor-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(131, 183, 172, 0.1), transparent);
+    transition: left 0.5s;
+}
+
+.sensor-card:hover::before {
+    left: 100%;
+}
+
+.sensor-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 6px 16px rgba(36, 43, 32, 0.2);
+}
+
+/* Кнопки */
+button, .btn {
+    transition: all var(--transition-fast);
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+}
+
+button:hover, .btn:hover {
+    transform: scale(1.03);
+    box-shadow: var(--shadow-hover);
+}
+
+button:active, .btn:active {
+    transform: scale(0.98);
+    box-shadow: var(--shadow-active);
+}
+
+/* Эффект ripple для кнопок */
+button::after, .btn::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+button:active::after, .btn:active::after {
+    width: 300px;
+    height: 300px;
+}
+
+/* Состояние загрузки кнопки */
+.btn-loading {
+    pointer-events: none;
+    opacity: 0.7;
+    position: relative;
+}
+
+.btn-loading::before {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #F1E8D8;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+@keyframes spin {
+    to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* ============================================
+   3. КАРТА МОНИТОРИНГА
+   ============================================ */
+
+/* Пульсация маркеров */
+.map-marker {
+    transition: all var(--transition-normal);
+    position: relative;
+}
+
+.map-marker::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    background: rgba(131, 183, 172, 0.4);
+    animation: pulse 2s ease-out infinite;
+    pointer-events: none;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.5);
+        opacity: 0;
+    }
+}
+
+.map-marker:hover {
+    transform: scale(1.2);
+    z-index: 10;
+}
+
+/* Информационная карточка маркера */
+.marker-info {
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all var(--transition-normal);
+    pointer-events: none;
+}
+
+.marker-info.visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+/* Переключение слоёв карты */
+.map-layer {
+    transition: opacity var(--transition-slow);
+}
+
+.map-layer.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* ============================================
+   4. АНИМАЦИЯ ДАННЫХ
+   ============================================ */
+
+/* Плавное обновление числовых показателей */
+.stat-value {
+    transition: all var(--transition-normal);
+}
+
+.stat-value.updating {
+    color: #D8C66A;
+    transform: scale(1.05);
+}
+
+/* Анимация прорисовки графиков */
+@keyframes drawChart {
+    from {
+        stroke-dashoffset: 1000;
+    }
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+
+.chart-path {
+    stroke-dasharray: 1000;
+    animation: drawChart 1.5s ease-out forwards;
+}
+
+/* Индикаторы статуса датчиков */
+.status-indicator {
+    position: relative;
+    transition: all var(--transition-normal);
+}
+
+.status-indicator.active::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    animation: statusPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes statusPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 currentColor;
+        opacity: 1;
+    }
+    50% {
+        box-shadow: 0 0 0 4px currentColor;
+        opacity: 0;
+    }
+}
+
+/* Подсветка новых событий */
+@keyframes highlightEvent {
+    0%, 100% {
+        background-color: inherit;
+    }
+    50% {
+        background-color: rgba(216, 198, 106, 0.2);
+    }
+}
+
+.event-highlight {
+    animation: highlightEvent 1s ease-in-out;
+}
+
+/* ============================================
+   5. УВЕДОМЛЕНИЯ И ИНЦИДЕНТЫ
+   ============================================ */
+
+/* Появление уведомлений */
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.notification-item {
+    animation: slideInRight var(--transition-slow);
+}
+
+/* Критические события */
+.incident-critical {
+    position: relative;
+    border-left: 4px solid #FF6B6B;
+}
+
+.incident-critical::before {
+    content: '';
+    position: absolute;
+    left: -4px;
+    top: 0;
+    width: 4px;
+    height: 100%;
+    background: #FF6B6B;
+    animation: criticalBlink 1.5s ease-in-out infinite;
+}
+
+@keyframes criticalBlink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+/* Переход статуса инцидента */
+.incident-status {
+    transition: all var(--transition-slow);
+}
+
+/* Фильтры и переключатели */
+.filter-button {
+    transition: all var(--transition-fast);
+    position: relative;
+}
+
+.filter-button:hover {
+    background-color: rgba(72, 84, 58, 0.2);
+    transform: translateY(-2px);
+}
+
+.filter-button.active {
+    background-color: rgba(217, 123, 80, 0.2);
+    color: #D97B50;
+    font-weight: 600;
+}
+
+.filter-button.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: #D97B50;
+}
+
+/* ============================================
+   6. ДОПОЛНИТЕЛЬНЫЕ УЛУЧШЕНИЯ
+   ============================================ */
+
+/* Skeleton Loading */
+.skeleton {
+    background: linear-gradient(90deg, 
+        rgba(72, 84, 58, 0.1) 25%, 
+        rgba(72, 84, 58, 0.2) 50%, 
+        rgba(72, 84, 58, 0.1) 75%
+    );
+    background-size: 200% 100%;
+    animation: loading 1.5s ease-in-out infinite;
+    border-radius: 4px;
+}
+
+@keyframes loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.skeleton-text {
+    height: 16px;
+    margin: 8px 0;
+}
+
+.skeleton-title {
+    height: 24px;
+    width: 60%;
+    margin: 12px 0;
+}
+
+.skeleton-card {
+    height: 150px;
+    border-radius: 12px;
+}
+
+/* Toast уведомления */
+.toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 16px 24px;
+    background: #48543A;
+    color: #F1E8D8;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    animation: toastSlideIn 0.3s ease-out;
+    z-index: 9999;
+    max-width: 400px;
+}
+
+@keyframes toastSlideIn {
+    from {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.toast.success {
+    border-left: 4px solid #83B7AC;
+}
+
+.toast.error {
+    border-left: 4px solid #FF6B6B;
+}
+
+.toast.warning {
+    border-left: 4px solid #D8C66A;
+}
+
+/* Мягкое появление блоков */
+.fade-in {
+    animation: fadeInUp var(--transition-slow);
+}
+
+/* Tooltip */
+.tooltip {
+    position: relative;
+}
+
+.tooltip::before {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%) translateY(-8px);
+    padding: 8px 12px;
+    background: #242B20;
+    color: #F1E8D8;
+    border-radius: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: all var(--transition-normal);
+    z-index: 1000;
+}
+
+.tooltip::after {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: #242B20;
+    opacity: 0;
+    transition: all var(--transition-normal);
+}
+
+.tooltip:hover::before,
+.tooltip:hover::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-4px);
+}
+
+/* Плавное раскрытие панелей */
+.panel {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height var(--transition-slow) ease-out;
+}
+
+.panel.expanded {
+    max-height: 2000px;
+}
+
+/* Обратная связь при взаимодействии */
+.interactive {
+    transition: all var(--transition-fast);
+}
+
+.interactive:active {
+    transform: scale(0.97);
+}
+
+.interactive.selected {
+    background-color: rgba(131, 183, 172, 0.2);
+    border-color: #83B7AC;
+}
+
+@keyframes successFeedback {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.success-feedback {
+    animation: successFeedback 0.4s ease-out;
+}
+
+/* ============================================
+   АДАПТИВНОСТЬ ДЛЯ МОБИЛЬНЫХ УСТРОЙСТВ
+   ============================================ */
+
+@media (hover: none) {
+    .card:hover,
+    .sensor-card:hover,
+    .map-marker:hover {
+        transform: none;
+    }
+    
+    .sidebar nav ul li:hover a {
+        transform: none;
+    }
+}
+
+/* ============================================
+   ДОПОЛНИТЕЛЬНЫЕ UTILITY КЛАССЫ
+   ============================================ */
+
+.transition-fast { transition: all var(--transition-fast); }
+.transition-normal { transition: all var(--transition-normal); }
+.transition-slow { transition: all var(--transition-slow); }
+
+.hover-lift:hover { transform: translateY(-2px); }
+.hover-scale:hover { transform: scale(1.05); }
+.hover-glow:hover { box-shadow: 0 0 20px rgba(131, 183, 172, 0.3); }

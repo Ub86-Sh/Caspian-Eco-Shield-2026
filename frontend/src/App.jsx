@@ -46,11 +46,30 @@ function play(type) {
   }
 }
 
+function Count({ v }) {
+  const [x, setX] = useState(v)
+  const ref = useRef(v)
+  useEffect(() => {
+    const from = typeof ref.current === 'number' ? ref.current : v
+    const t0 = performance.now()
+    let raf
+    const step = t => {
+      const k = Math.min(1, (t - t0) / 500)
+      const val = from + (v - from) * k
+      setX(Number.isInteger(v) ? Math.round(val) : +val.toFixed(1))
+      if (k < 1) raf = requestAnimationFrame(step); else ref.current = v
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [v])
+  return <>{x}</>
+}
+
 function Card({ title, right, cls = '', children }) {
   return <div className={'card ' + cls}>{title && <div className="ct"><span>{title}</span>{right}</div>}{children}</div>
 }
 function Stat({ label, value, unit, sub, cls }) {
-  return <Card title={label} cls={cls}><div className="big">{value}{unit && <small> {unit}</small>}</div>{sub && <div className="sub">{sub}</div>}</Card>
+  return <Card title={label} cls={cls}><div className="big">{typeof value === 'number' ? <Count v={value} /> : value}{unit && <small> {unit}</small>}</div>{sub && <div className="sub">{sub}</div>}</Card>
 }
 function Chart({ data, color = '#48543A', h = 110 }) {
   const w = 320, mn = Math.min(...data), mx = Math.max(...data), r = mx - mn || 1
@@ -58,7 +77,8 @@ function Chart({ data, color = '#48543A', h = 110 }) {
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="chart" preserveAspectRatio="none">
       <polygon points={`0,${h} ${pts.join(' ')} ${w},${h}`} fill={color} opacity=".2" />
-      <polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth="2.5" />
+      <polyline points={pts.join(' ')} pathLength="1" className="draw" fill="none" stroke={color} strokeWidth="2.5" />
+
     </svg>
   )
 }
@@ -93,7 +113,7 @@ L.control.attribution({ prefix: false }).addTo(m)
     if (!data || !g.zones) return
     Object.values(g).forEach(x => x.clearLayers())
     if (layers.zones) data.risk_zones.forEach(z => L.polygon(z.polygon, { color: riskColor(z.risk), weight: 1.5, fillOpacity: 0.3 }).on('click', () => onPick && onPick({ kind: 'zone', obj: z })).addTo(g.zones))
-    if (layers.buoys) data.buoys.forEach(b => L.marker([b.lat, b.lon], { icon: dot(b.status === 'critical' ? 'crit' : 'ok') }).on('click', () => onPick && onPick({ kind: 'buoy', obj: b })).addTo(g.buoys))
+    if (layers.buoys) data.buoys.forEach(b => L.marker([b.lat, b.lon], { icon: dot(b.status === 'critical' ? 'crit' : 'ok') }).bindTooltip(`${b.name}: ${b.temp}°C, ${b.salinity}‰`, { direction: 'top', offset: [0, -8] }).on('click', () => onPick && onPick({ kind: 'buoy', obj: b })).addTo(g.buoys))
     if (layers.incidents) data.incidents.forEach(i => L.marker([i.lat, i.lon], { icon: dot('inc') }).on('click', () => onPick && onPick({ kind: 'incident', obj: i })).addTo(g.incidents))
     if (layers.animals) {
       SIGHTINGS.forEach(p => L.circleMarker(p, { radius: 5, color: GOLD, fillColor: GOLD, fillOpacity: 0.9, weight: 1 }).addTo(g.animals))
@@ -118,14 +138,39 @@ export default function App() {
   const [fStatus, setFStatus] = useState('all')
   const [fType, setFType] = useState('all')
   const [prefs, setPrefs] = useState({ push: true, sound: true, sms: false, zones: true, labels: true })
+  
+  const [toasts, setToasts] = useState([])
+const [loading, setLoading] = useState('')
+const prevId = useRef(null)
+const toast = (msg, kind = 'ok') => {
+  const id = Date.now() + Math.random()
+  setToasts(t => [...t, { id, msg, kind }])
+  setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3000)
+}
 
   async function load() {
     try { const r = await fetch(API + '/api/state'); setData(await r.json()); setErr(false) } catch { setErr(true) }
   }
   useEffect(() => { load(); const t = setInterval(load, 3000); return () => clearInterval(t) }, [])
 
-  const simulate = async () => { await fetch(API + '/api/simulate', { method: 'POST' }); load() }
-  const dispatch = async id => { await fetch(`${API}/api/incidents/${id}/dispatch`, { method: 'POST' }); load() }
+  useEffect(() => {
+  if (!data) return
+  const top = data.incidents[0]?.id
+  if (prevId.current !== null && top && top !== prevId.current) toast('Новое событие: ' + (TYPES[data.incidents[0].type] || 'инцидент'), 'err')
+  prevId.current = top ?? 0
+}, [data])
+
+  const simulate = async () => {
+  setLoading('sim')
+  try { await fetch(API + '/api/simulate', { method: 'POST' }); await load() }
+  catch { toast('Нет связи с сервером', 'err') }
+  setLoading('')
+}
+const dispatch = async id => {
+  try { await fetch(`${API}/api/incidents/${id}/dispatch`, { method: 'POST' }); await load(); toast('Патруль направлен') }
+  catch { toast('Не удалось направить патруль', 'err') }
+}
+
   async function upload(e) {
     const f = e.target.files[0]; if (!f) return
     setBusy(true)
@@ -157,6 +202,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <div className="toasts">{toasts.map(t => <div key={t.id} className={'toast ' + t.kind}>{t.msg}</div>)}</div>
       <aside className="side">
         <div className="logo"> Эко-Щит Каспия<small>Помощник инспектора ООПТ</small></div>
         {NAV.map(([k, n]) => <button key={k} className={'nav ' + (tab === k ? 'on' : '')} onClick={() => setTab(k)}>{n}</button>)}
@@ -167,11 +213,11 @@ export default function App() {
           <h1>{title}</h1><span className="sp" />
           <span className={'conn ' + (err ? 'bad' : '')}>{err ? ' нет связи с сервером' : ` ${buoys.length} буев онлайн`}</span>
           <input className="search" placeholder="Поиск по системе…" />
-          <button className="bell" onClick={() => setTab('incidents')}>🔔{newCount > 0 && <b>{newCount}</b>}</button>
+          <button className="bell" data-tip="Уведомления" onClick={() => setTab('incidents')}>🔔{newCount > 0 && <b>{newCount}</b>}</button>
           <div className="me"><i>И</i><div>Инспектор<br /><span className="hint">Дагестанский заповедник</span></div></div>
         </div>
 
-        <div className={'content ' + (tab === 'map' ? 'flush' : '')}>
+        <div key={tab} className={'content page ' + (tab === 'map' ? 'flush ' : '') + (!data && !err ? 'loading' : '')}>
 
           {tab === 'home' && (<>
             <div className="g4">
@@ -181,7 +227,7 @@ export default function App() {
               <Stat label="Зоны высокого риска" value={zones.filter(z => z.risk > 0.7).length} sub={`из ${zones.length}`} />
             </div>
             <div className="g2">
-              <Card title="Последние события" right={<button className="btn alt" onClick={simulate}>Симуляция тревоги</button>}>
+              <Card title="Последние события" right={<button className="btn alt" onClick={simulate} data-load={loading === 'sim' ? '1' : undefined}>Симуляция тревоги</button>}>
                 {incs.length === 0 && <div className="sub">Тревог нет. Нажмите «Симуляция тревоги».</div>}
                 {incs.slice(0, 5).map(IncCard)}
               </Card>
@@ -202,9 +248,9 @@ export default function App() {
                 {[['buoys', 'Датчики и буи'], ['zones', 'Охраняемые зоны'], ['animals', 'Животные'], ['incidents', 'Инциденты']].map(([k, n]) => (
                   <label key={k}><input type="checkbox" checked={layers[k]} onChange={() => setLayers(l => ({ ...l, [k]: !l[k] }))} />{n}</label>
                 ))}
-                <button className="btn" style={{ width: '100%', marginTop: 6 }} onClick={simulate}>Симуляция тревоги</button>
+                <button className="btn" style={{ width: '100%', marginTop: 6 }} onClick={simulate} data-load={loading === 'sim' ? '1' : undefined}>Симуляция тревоги</button>
               </div>
-              <div className="ov r">
+              <div className="ov r" key={pick?.obj?.id ?? 'none'}>
                 <h4>Выбранный объект</h4>
                 {!pick && <div className="hint">Нажмите на маркер или зону на карте.</div>}
                 {pick?.kind === 'buoy' && <div><b>{pick.obj.name}</b><br />Вода: {pick.obj.temp}°C<br />Солёность: {pick.obj.salinity}‰<br />Статус: {pick.obj.status === 'critical' ? ' тревога' : ' норма'}</div>}
@@ -274,7 +320,7 @@ export default function App() {
 
           {tab === 'incidents' && (
             <div className="g2" style={{ marginTop: 0, gridTemplateColumns: '1.5fr 1fr' }}>
-              <Card title="Журнал происшествий" right={<button className="btn" onClick={simulate}>+ Создать инцидент</button>}>
+              <Card title="Журнал происшествий" right={<button className="btn" onClick={simulate} data-load={loading === 'sim' ? '1' : undefined}>+ Создать инцидент</button>}>
                 <div className="row" style={{ marginBottom: 10 }}>
                   <select value={fStatus} onChange={e => setFStatus(e.target.value)}><option value="all">Все статусы</option><option>Новый</option><option>Патруль направлен</option></select>
                   <select value={fType} onChange={e => setFType(e.target.value)}><option value="all">Все типы</option>{Object.entries(TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>

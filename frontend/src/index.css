@@ -93,3 +93,63 @@ input[type=file]{font-size:12px}
 .sw{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #e4dac5;font-size:14px}
 .sw input{width:20px;height:20px;accent-color:var(--terra)}
 .hint{font-size:11px;color:#b3ae93}
+/* ===== АНИМАЦИИ ===== */
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+@keyframes pop{from{opacity:0;transform:translateY(-6px) scale(.97)}to{opacity:1;transform:none}}
+@keyframes shimmer{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@keyframes softblink{50%{opacity:.6}}
+
+.page{animation:fadeUp .35s ease}
+.page.flush{animation:fadeIn .35s ease}
+
+.nav{position:relative;transition:background .2s,color .2s,transform .2s}
+.nav.on{background:rgba(217,123,80,.2);color:#fff;font-weight:600}
+.nav.on::before{content:"";position:absolute;left:-14px;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:var(--terra)}
+
+.card{transition:transform .25s,box-shadow .25s,border-color .25s,background-color .25s}
+.btn{transition:transform .15s,filter .15s,background-color .2s,opacity .2s}
+.ev{transition:background-color .3s,border-color .3s,transform .2s;animation:slideIn .3s ease}
+.tag{transition:background-color .3s,color .3s}
+.tag.crit{animation:softblink 2.4s ease-in-out infinite}
+.dot{transition:transform .2s}
+select,.search,.ov label,.sw{transition:border-color .2s,color .2s}
+
+@media (hover:hover){
+.nav:hover{transform:translateX(3px);color:var(--gold)}
+.nav.on:hover{color:#fff}
+.card:hover{transform:translateY(-3px);border-color:var(--terra);box-shadow:0 8px 22px rgba(0,0,0,.25),0 0 0 1px rgba(217,123,80,.35)}
+.btn:hover{transform:translateY(-1px) scale(1.03);filter:brightness(1.08)}
+.ev:hover{transform:translateX(3px)}
+.dot.ok:hover,.dot.crit:hover{transform:scale(1.35)}
+.ov label:hover,.sw:hover{color:var(--gold)}
+select:hover,.search:hover{border-color:var(--terra)}
+}
+.btn:active{transform:scale(.96)}
+
+.ov.r{animation:pop .25s ease}
+.chart polygon{animation:fadeIn 1s ease}
+.draw{stroke-dasharray:1;animation:draw 1.2s ease}
+
+.btn[data-load]{pointer-events:none;opacity:.85}
+.btn[data-load]::after{content:"";display:inline-block;width:12px;height:12px;margin-left:8px;border:2px solid rgba(255,255,255,.5);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px}
+
+.toasts{position:fixed;right:20px;bottom:20px;z-index:4000;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{background:var(--sand);color:var(--bg);border-left:5px solid var(--water);border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.35);animation:pop .3s ease}
+.toast.err{border-left-color:var(--crit)}
+
+.content.loading .card{position:relative;overflow:hidden;background:#e4dac5!important;border-color:transparent}
+.content.loading .card>*{visibility:hidden}
+.content.loading .card::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);animation:shimmer 1.2s infinite}
+
+[data-tip]{position:relative}
+[data-tip]::after{content:attr(data-tip);position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%) translateY(-4px);background:var(--sand);color:var(--bg);font-size:11px;font-weight:600;padding:4px 8px;border-radius:6px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50}
+@media (hover:hover){[data-tip]:hover::after{opacity:1;transform:translateX(-50%)}}
+
+.leaflet-tooltip{background:var(--bg);color:var(--sand);border:1px solid #5c6a4b;border-radius:8px;box-shadow:none;font-size:12px}
+.leaflet-tooltip-top:before{border-top-color:#5c6a4b}
+
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
