@@ -1,16 +1,1865 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <link rel="stylesheet" href="animations.css">
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Эко-заповедник</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ЭКО-ЩИТ КАСПИЯ // ГИДРОАКУСТИЧЕСКИЙ КОНТУР</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;0,800;1,400&family=Syne:wght@700;800&family=Unbounded:wght@600;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <style>
+    :root {
+      --bg-void: #050709;
+      --bg-panel: #0A0D10;
+      --bg-elev: #10151A;
+      --ink-main: #E6E4DC;
+      --ink-dim: #7C8288;
+      --ink-faint: #3A4046;
+      --accent-phosphor: #C8FF00;
+      --accent-alert: #FF2600;
+      --accent-gold: #E5B842;
+      --accent-water: #48A999;
+      --border-hair: rgba(230, 228, 220, 0.14);
+      --border-strong: rgba(230, 228, 220, 0.35);
+      --font-display: 'Unbounded', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      background-color: var(--bg-void);
+      color: var(--ink-main);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.5;
+      overflow-x: hidden;
+    }
+
+    body {
+      background: var(--bg-void);
+      min-height: 100vh;
+      position: relative;
+      cursor: crosshair;
+    }
+
+    /* Зерно пленки + микросетка осциллографа */
+    .noise-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.038;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    .scanline {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 9998;
+      background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.22) 50%, rgba(0,0,0,0.22));
+      background-size: 100% 4px;
+      opacity: 0.35;
+    }
+
+    /* Эффект тревоги при выстреле */
+    body.alarm-flash {
+      animation: alarmStrobe 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes alarmStrobe {
+      0% { background-color: #3b0800; }
+      25% { background-color: #050709; }
+      50% { background-color: #540b00; }
+      100% { background-color: #050709; }
+    }
+
+    /* Верхняя приборная шина */
+    .instrument-header {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      display: grid;
+      grid-template-columns: 280px 1fr auto;
+      border-bottom: 1px solid var(--border-strong);
+      background: rgba(5, 7, 9, 0.94);
+      backdrop-filter: blur(4px);
+    }
+
+    .brand-cell {
+      padding: 12px 18px;
+      border-right: 1px solid var(--border-hair);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .brand-title {
+      font-family: var(--font-display);
+      font-weight: 900;
+      font-size: 13px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ink-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-led {
+      width: 8px;
+      height: 8px;
+      background: var(--accent-phosphor);
+      display: inline-block;
+      box-shadow: 0 0 8px var(--accent-phosphor);
+    }
+
+    .status-led.alert {
+      background: var(--accent-alert);
+      box-shadow: 0 0 12px var(--accent-alert);
+      animation: blinkFast 0.35s infinite alternate;
+    }
+
+    @keyframes blinkFast {
+      from { opacity: 1; }
+      to { opacity: 0.2; }
+    }
+
+    .brand-sub {
+      font-size: 10px;
+      color: var(--ink-dim);
+      margin-top: 2px;
+      letter-spacing: 0.04em;
+    }
+
+    .telemetry-strip {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      padding: 0 20px;
+      font-size: 11px;
+      color: var(--ink-dim);
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+
+    .telemetry-item b {
+      color: var(--ink-main);
+      font-weight: 700;
+    }
+
+    .telemetry-item.crit b {
+      color: var(--accent-alert);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: stretch;
+      border-left: 1px solid var(--border-hair);
+    }
+
+    .btn-raw {
+      background: transparent;
+      border: none;
+      border-left: 1px solid var(--border-hair);
+      color: var(--ink-main);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0 18px;
+      cursor: pointer;
+      transition: background 0.1s, color 0.1s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-raw:first-child {
+      border-left: none;
+    }
+
+    .btn-raw:hover {
+      background: var(--ink-main);
+      color: var(--bg-void);
+    }
+
+    .btn-raw.danger {
+      color: var(--accent-alert);
+    }
+
+    .btn-raw.danger:hover {
+      background: var(--accent-alert);
+      color: var(--ink-main);
+    }
+
+    .btn-raw.phosphor {
+      background: var(--accent-phosphor);
+      color: var(--bg-void);
+    }
+
+    .btn-raw.phosphor:hover {
+      background: #e1ff66;
+    }
+
+    /* ЭКРАН 1: ГИДРОАКУСТИЧЕСКИЙ ОСЦИЛЛОГРАФ (ТИШИНА -> ТРЕВОГА) */
+    .hero-scope {
+      position: relative;
+      min-height: 86vh;
+      border-bottom: 1px solid var(--border-strong);
+      display: grid;
+      grid-template-rows: 1fr auto;
+      overflow: hidden;
+    }
+
+    #hydro-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    .hero-grid-overlay {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      grid-template-columns: 1.3fr 0.7fr;
+      padding: 40px 28px 28px;
+      pointer-events: none;
+    }
+
+    .hero-headline-wrap {
+      pointer-events: auto;
+      align-self: start;
+    }
+
+    .kicker-tag {
+      display: inline-block;
+      border: 1px solid var(--border-strong);
+      padding: 3px 8px;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-phosphor);
+      margin-bottom: 20px;
+      background: rgba(5, 7, 9, 0.85);
+    }
+
+    /* Асимметричный уезжающий заголовок */
+    .mega-title {
+      font-family: var(--font-display);
+      font-weight: 900;
+      font-size: clamp(2.4rem, 5.6vw, 5.4rem);
+      line-height: 0.94;
+      letter-spacing: -0.03em;
+      text-transform: uppercase;
+      color: var(--ink-main);
+      margin-left: -4px;
+      max-width: 15ch;
+    }
+
+    .mega-title span.cut {
+      display: block;
+      color: transparent;
+      -webkit-text-stroke: 1.5px var(--ink-main);
+      margin-left: 48px;
+    }
+
+    .mega-title span.signal {
+      color: var(--accent-alert);
+      display: inline-block;
+    }
+
+    .hero-manifesto {
+      margin-top: 32px;
+      max-width: 440px;
+      background: rgba(5, 7, 9, 0.88);
+      border-left: 2px solid var(--accent-phosphor);
+      padding: 14px 18px;
+      font-size: 13px;
+      color: var(--ink-main);
+    }
+
+    .hero-manifesto p + p {
+      margin-top: 10px;
+      color: var(--ink-dim);
+      font-size: 12px;
+    }
+
+    /* Правая колонка первого экрана — приборный блок выстрела */
+    .hero-trigger-box {
+      pointer-events: auto;
+      align-self: end;
+      justify-self: end;
+      width: 100%;
+      max-width: 360px;
+      background: rgba(10, 13, 16, 0.94);
+      border: 1px solid var(--border-strong);
+      padding: 18px;
+    }
+
+    .scope-readout {
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-hair);
+      padding-bottom: 10px;
+      margin-bottom: 14px;
+      font-size: 11px;
+    }
+
+    .db-meter {
+      font-family: var(--font-display);
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--accent-phosphor);
+      line-height: 1;
+    }
+
+    .db-meter.alert {
+      color: var(--accent-alert);
+    }
+
+    .trigger-btn {
+      width: 100%;
+      padding: 14px 16px;
+      background: var(--accent-alert);
+      color: #fff;
+      border: none;
+      font-family: var(--font-mono);
+      font-weight: 800;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: transform 0.08s;
+    }
+
+    .trigger-btn:active {
+      transform: scale(0.98);
+    }
+
+    .hero-bottom-ruler {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border-top: 1px solid var(--border-hair);
+      background: rgba(5, 7, 9, 0.92);
+    }
+
+    .ruler-cell {
+      padding: 14px 20px;
+      border-right: 1px solid var(--border-hair);
+    }
+
+    .ruler-cell:last-child {
+      border-right: none;
+    }
+
+    .ruler-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      color: var(--ink-dim);
+      letter-spacing: 0.08em;
+    }
+
+    .ruler-val {
+      font-family: var(--font-display);
+      font-size: 22px;
+      font-weight: 800;
+      margin-top: 4px;
+      color: var(--ink-main);
+    }
+
+    .ruler-val small {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--ink-dim);
+      font-weight: 400;
+    }
+
+    /* НАВИГАЦИЯ ПО МОДУЛЯМ СИСТЕМЫ (СОХРАНЯЕМ СТРУКТУРУ СЕРВИСА) */
+    .console-shell {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      min-height: 820px;
+      border-bottom: 1px solid var(--border-strong);
+    }
+
+    .console-rail {
+      border-right: 1px solid var(--border-strong);
+      background: var(--bg-panel);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .rail-group-title {
+      padding: 14px 16px 8px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--ink-dim);
+      border-bottom: 1px solid var(--border-hair);
+    }
+
+    .rail-btn {
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--border-hair);
+      padding: 14px 16px;
+      color: var(--ink-dim);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.1s;
+    }
+
+    .rail-btn:hover {
+      color: var(--ink-main);
+      background: rgba(230, 228, 220, 0.04);
+    }
+
+    .rail-btn.active {
+      background: var(--ink-main);
+      color: var(--bg-void);
+      font-weight: 700;
+    }
+
+    .rail-btn .badge {
+      font-size: 10px;
+      padding: 1px 5px;
+      background: var(--accent-alert);
+      color: #fff;
+      font-weight: 800;
+    }
+
+    .inspector-box {
+      padding: 16px;
+      border-top: 1px solid var(--border-hair);
+      font-size: 11px;
+    }
+
+    .inspector-box .code {
+      color: var(--accent-phosphor);
+      font-weight: 700;
+    }
+
+    /* ОСНОВНАЯ РАБОЧАЯ ОБЛАСТЬ КОНСОЛИ */
+    .console-viewport {
+      background: var(--bg-void);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .viewport-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 22px;
+      border-bottom: 1px solid var(--border-hair);
+      background: var(--bg-panel);
+    }
+
+    .viewport-title {
+      font-family: var(--font-display);
+      font-size: 15px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .tab-pane {
+      display: none;
+      padding: 22px;
+      flex: 1;
+    }
+
+    .tab-pane.active {
+      display: block;
+    }
+
+    .tab-pane.flush {
+      padding: 0;
+    }
+
+    /* СЕТКИ И БЛОКИ ВНУТРИ КОНСОЛИ (АСИММЕТРИЧНЫЕ, БЕЗ СКРУГЛЕНИЙ) */
+    .split-asymmetric {
+      display: grid;
+      grid-template-columns: 1.45fr 0.85fr;
+      gap: 18px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+    }
+
+    .panel-box {
+      border: 1px solid var(--border-hair);
+      background: var(--bg-panel);
+      padding: 16px;
+    }
+
+    .panel-box.alert-border {
+      border-color: var(--accent-alert);
+    }
+
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 10px;
+      margin-bottom: 14px;
+      border-bottom: 1px solid var(--border-hair);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--ink-dim);
+    }
+
+    /* КАРТА МОНИТОРИНГА (LEAFLET ТЕМНЫЙ КОНТУР) */
+    .map-wrapper {
+      position: relative;
+      height: 640px;
+      width: 100%;
+      background: #04070a;
+    }
+
+    .map-wrapper.mini {
+      height: 360px;
+    }
+
+    #main-map, #mini-map, #migration-map {
+      width: 100%;
+      height: 100%;
+      background: #04070a;
+    }
+
+    .leaflet-container {
+      background: #04070a !important;
+      font-family: var(--font-mono) !important;
+    }
+
+    .map-hud-left {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      z-index: 500;
+      background: rgba(5, 7, 9, 0.92);
+      border: 1px solid var(--border-strong);
+      padding: 12px 14px;
+      width: 230px;
+    }
+
+    .map-hud-right {
+      position: absolute;
+      bottom: 14px;
+      left: 14px;
+      z-index: 500;
+      background: rgba(5, 7, 9, 0.94);
+      border: 1px solid var(--border-strong);
+      padding: 14px;
+      width: 310px;
+    }
+
+    .hud-check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      margin-top: 8px;
+      cursor: pointer;
+      color: var(--ink-main);
+    }
+
+    .hud-check input {
+      accent-color: var(--accent-phosphor);
+    }
+
+    /* МАРКЕРЫ БУЁВ НА КАРТЕ */
+    .buoy-pin {
+      width: 14px;
+      height: 14px;
+      background: var(--accent-phosphor);
+      border: 2px solid #050709;
+      box-shadow: 0 0 10px var(--accent-phosphor);
+    }
+
+    .buoy-pin.crit {
+      background: var(--accent-alert);
+      box-shadow: 0 0 16px var(--accent-alert);
+      animation: pulseSquare 0.7s infinite alternate;
+    }
+
+    .inc-pin {
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--accent-alert);
+      background: rgba(255, 38, 0, 0.35);
+      transform: rotate(45deg);
+      animation: pulseSquare 0.5s infinite alternate;
+    }
+
+    @keyframes pulseSquare {
+      from { transform: scale(1) rotate(45deg); }
+      to { transform: scale(1.35) rotate(45deg); }
+    }
+
+    .city-label {
+      color: var(--ink-dim);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      text-shadow: 0 1px 2px #000;
+    }
+
+    /* СПИСОК СОБЫТИЙ И ЖУРНАЛ */
+    .event-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1px solid var(--border-hair);
+      margin-bottom: 8px;
+      background: var(--bg-void);
+      cursor: pointer;
+      transition: border-color 0.1s;
+    }
+
+    .event-row:hover, .event-row.selected {
+      border-color: var(--ink-main);
+      background: var(--bg-elev);
+    }
+
+    .event-row.crit {
+      border-left: 3px solid var(--accent-alert);
+    }
+
+    .tag-pill {
+      display: inline-block;
+      padding: 2px 6px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      border: 1px solid var(--border-strong);
+    }
+
+    .tag-pill.crit {
+      background: var(--accent-alert);
+      border-color: var(--accent-alert);
+      color: #fff;
+    }
+
+    .tag-pill.ok {
+      border-color: var(--accent-phosphor);
+      color: var(--accent-phosphor);
+    }
+
+    /* АКУСТИЧЕСКИЙ СПЕКТРОГРАФ */
+    .spectrum-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 110px;
+      padding: 10px;
+      background: #030405;
+      border: 1px solid var(--border-hair);
+      margin: 12px 0;
+    }
+
+    .spectrum-bars i {
+      flex: 1;
+      display: block;
+      background: var(--accent-phosphor);
+      transition: height 0.25s ease;
+    }
+
+    .spectrum-bars.crit i {
+      background: var(--accent-alert);
+    }
+
+    /* ТАБЛИЦА ТЕЛЕТАЙПА */
+    .raw-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .raw-table th {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border-strong);
+      color: var(--ink-dim);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .raw-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border-hair);
+    }
+
+    .raw-table tr:hover td {
+      background: var(--bg-elev);
+      cursor: pointer;
+    }
+
+    /* ИНЖЕНЕРНЫЙ БЛОК АНАТОМИИ БУЯ (СХЕМА ПРИБОРА) */
+    .hardware-section {
+      padding: 64px 28px;
+      border-bottom: 1px solid var(--border-strong);
+      background: var(--bg-panel);
+      display: grid;
+      grid-template-columns: 0.9fr 1.1fr;
+      gap: 40px;
+      align-items: center;
+    }
+
+    .section-index {
+      font-size: 11px;
+      color: var(--accent-phosphor);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    .section-h2 {
+      font-family: var(--font-display);
+      font-size: clamp(1.8rem, 3.2vw, 2.8rem);
+      font-weight: 800;
+      line-height: 1.05;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+
+    .spec-list {
+      border-top: 1px solid var(--border-strong);
+    }
+
+    .spec-row {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border-hair);
+      font-size: 12px;
+    }
+
+    .spec-row span:first-child {
+      color: var(--ink-dim);
+      text-transform: uppercase;
+      font-size: 11px;
+    }
+
+    .blueprint-box {
+      border: 1px solid var(--border-strong);
+      background: #040608;
+      padding: 24px;
+      position: relative;
+    }
+
+    .blueprint-caption {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      font-size: 10px;
+      color: var(--ink-dim);
+    }
+
+    /* УВЕДОМЛЕНИЯ (ТОСТЫ) */
+    .toast-stack {
+      position: fixed;
+      bottom: 18px;
+      right: 18px;
+      z-index: 9000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .toast-item {
+      background: var(--bg-void);
+      border: 1px solid var(--accent-phosphor);
+      color: var(--ink-main);
+      padding: 12px 16px;
+      font-size: 12px;
+      min-width: 280px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+    }
+
+    .toast-item.err {
+      border-color: var(--accent-alert);
+      background: #1a0400;
+    }
+
+    /* АДАПТИВ */
+    @media (max-width: 980px) {
+      .instrument-header {
+        grid-template-columns: 1fr auto;
+      }
+      .telemetry-strip {
+        display: none;
+      }
+      .hero-grid-overlay {
+        grid-template-columns: 1fr;
+        gap: 28px;
+      }
+      .hero-trigger-box {
+        justify-self: start;
+        max-width: 100%;
+      }
+      .hero-bottom-ruler {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .console-shell {
+        grid-template-columns: 1fr;
+      }
+      .console-rail {
+        flex-direction: row;
+        overflow-x: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border-strong);
+      }
+      .rail-group-title, .inspector-box {
+        display: none;
+      }
+      .rail-btn {
+        white-space: nowrap;
+        border-bottom: none;
+        border-right: 1px solid var(--border-hair);
+      }
+      .split-asymmetric, .grid-3, .hardware-section {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="noise-overlay"></div>
+  <div class="scanline"></div>
+  <div class="toast-stack" id="toast-stack"></div>
+
+  <!-- ВЕРХНЯЯ ПРИБОРНАЯ ШИНА -->
+  <header class="instrument-header">
+    <div class="brand-cell">
+      <div class="brand-title">
+        <span class="status-led" id="global-led"></span>
+        ЭКО-ЩИТ КАСПИЯ
+      </div>
+      <div class="brand-sub">СЕКТОР СЕВЕР // ГИДРОАКУСТИКА v2.6</div>
+    </div>
+
+    <div class="telemetry-strip">
+      <div class="telemetry-item">БУИ В СЕТИ: <b id="hdr-buoys">6 / 6</b></div>
+      <div class="telemetry-item">УРОВЕНЬ МОРЯ: <b>-28.3 м БС</b></div>
+      <div class="telemetry-item">СРЕДНЯЯ T°: <b id="hdr-temp">13.4 °C</b></div>
+      <div class="telemetry-item">СОЛЁНОСТЬ: <b id="hdr-sal">7.3 ‰</b></div>
+      <div class="telemetry-item crit" id="hdr-threat-wrap">АКТИВНЫЕ УГРОЗЫ: <b id="hdr-threats">0</b></div>
+    </div>
+
+    <div class="header-actions">
+      <button class="btn-raw danger" onclick="triggerSimulation()">[ ! ] ИМИТАЦИЯ ТРЕВОГИ</button>
+      <a href="#console" class="btn-raw phosphor">ПУЛЬТ ИНСПЕКТОРА ↓</a>
+    </div>
+  </header>
+
+  <!-- ЭКРАН 1: ГИДРОАКУСТИЧЕСКИЙ ОСЦИЛЛОГРАФ -->
+  <section class="hero-scope" id="hero-scope">
+    <canvas id="hydro-canvas"></canvas>
+
+    <div class="hero-grid-overlay">
+      <div class="hero-headline-wrap">
+        <div class="kicker-tag">АВТОНОМНЫЙ КОНТУР ОХРАНЫ АКВАТОРИИ // 44°–46° С.Ш.</div>
+        <h1 class="mega-title">
+          ТИШИНА
+          <span class="cut">НА ВОДЕ</span>
+          <span class="signal" id="hero-state-word">ПОД КОНТРОЛЕМ</span>
+        </h1>
+
+        <div class="hero-manifesto">
+          <p>Браконьерство начинается в темноте, когда инспектор не видит горизонт. Под водой звук идёт в 4,5 раза быстрее, чем в воздухе.</p>
+          <p>Сеть гидроакустических буёв непрерывно слушает толщу Каспия, отсекает прибой и за 1.4 секунды пеленгует выстрел, подвесной мотор или постановку сетей.</p>
+        </div>
+      </div>
+
+      <div class="hero-trigger-box">
+        <div class="scope-readout">
+          <div>
+            <div style="color:var(--ink-dim);font-size:10px;">УРОВЕНЬ ШУМА / ДАТЧИК #04</div>
+            <div class="db-meter" id="db-readout">34.2 dB</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="color:var(--ink-dim);font-size:10px;">КЛАССИФИКАТОР AST</div>
+            <div id="hero-class-label" style="color:var(--accent-phosphor);font-weight:700;margin-top:4px;">ШУМ ВОЛН / НОРМА</div>
+          </div>
+        </div>
+        <p style="font-size:11px;color:var(--ink-dim);margin-bottom:14px;">
+          Нажмите, чтобы подать акустический импульс выстрела 12-го калибра на гидрофон буя «о. Тюлений» и проверить реакцию контура.
+        </p>
+        <button class="trigger-btn" onclick="triggerSimulation()">
+          <span>ПРОИЗВЕСТИ ВЫСТРЕЛ / ТЕСТ</span>
+          <span>148 dB →</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="hero-bottom-ruler">
+      <div class="ruler-cell">
+        <div class="ruler-label">РАДИУС ПЕЛЕНГА БУЯ</div>
+        <div class="ruler-val">12.5 <small>км / гидрофон</small></div>
+      </div>
+      <div class="ruler-cell">
+        <div class="ruler-label">ЗАДЕРЖКА ТРЕВОГИ</div>
+        <div class="ruler-val">1.4 <small>сек до пульта</small></div>
+      </div>
+      <div class="ruler-cell">
+        <div class="ruler-label">ТОЧНОСТЬ НЕЙРОСЕТИ</div>
+        <div class="ruler-val">94.8 <small>% (AudioSet AST)</small></div>
+      </div>
+      <div class="ruler-cell">
+        <div class="ruler-label">АВТОНОМНОСТЬ В ЛЬДАХ</div>
+        <div class="ruler-val">180 <small>суток / LiFePO4</small></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ЭКРАН 2: РАБОЧАЯ КОНСОЛЬ ИНСПЕКТОРА (СОХРАНЕНА СТРУКТУРА ВКЛАДОК И ДАННЫХ) -->
+  <section class="console-shell" id="console">
+    <aside class="console-rail">
+      <div>
+        <div class="rail-group-title">МОДУЛИ КОНСОЛИ</div>
+        <button class="rail-btn active" data-tab="home" onclick="switchTab('home', this)">
+          <span>01 / СВОДКА</span>
+        </button>
+        <button class="rail-btn" data-tab="map" onclick="switchTab('map', this)">
+          <span>02 / КАРТА МОНИТОРИНГА</span>
+        </button>
+        <button class="rail-btn" data-tab="migration" onclick="switchTab('migration', this)">
+          <span>03 / МИГРАЦИЯ ТЮЛЕНЯ</span>
+        </button>
+        <button class="rail-btn" data-tab="audio" onclick="switchTab('audio', this)">
+          <span>04 / АКУСТИЧЕСКИЙ АНАЛИЗ</span>
+        </button>
+        <button class="rail-btn" data-tab="water" onclick="switchTab('water', this)">
+          <span>05 / ВОДНАЯ АНАЛИТИКА</span>
+        </button>
+        <button class="rail-btn" data-tab="incidents" onclick="switchTab('incidents', this)">
+          <span>06 / ИНЦИДЕНТЫ</span>
+          <span class="badge" id="nav-inc-badge" style="display:none;">0</span>
+        </button>
+        <button class="rail-btn" data-tab="settings" onclick="switchTab('settings', this)">
+          <span>07 / НАСТРОЙКИ</span>
+        </button>
+      </div>
+
+      <div class="inspector-box">
+        <div style="color:var(--ink-dim);margin-bottom:4px;">ДЕЖУРНЫЙ ПОСТ:</div>
+        <div class="code">ИНСПЕКТОР ООПТ #09</div>
+        <div style="color:var(--ink-dim);margin-top:4px;">Дагестанский заповедник // Кизлярский залив</div>
+      </div>
+    </aside>
+
+    <div class="console-viewport">
+      <div class="viewport-bar">
+        <div class="viewport-title" id="viewport-title">01 / ОПЕРАТИВНАЯ СВОДКА АКВАТОРИИ</div>
+        <div style="display:flex;gap:10px;">
+          <button class="btn-raw" onclick="triggerSimulation()">+ СИМУЛЯЦИЯ ИНЦИДЕНТА</button>
+        </div>
+      </div>
+
+      <!-- ВКЛАДКА 1: ГЛАВНАЯ СВОДКА -->
+      <div class="tab-pane active" id="tab-home">
+        <div class="split-asymmetric">
+          <div class="panel-box">
+            <div class="panel-head">
+              <span>ОПЕРАТИВНАЯ КАРТА СЕКТОРА</span>
+              <button class="btn-raw" style="padding:2px 8px;border:1px solid var(--border-hair);" onclick="switchTab('map', document.querySelector('[data-tab=map]'))">РАЗВЕРНУТЬ ↗</button>
+            </div>
+            <div class="map-wrapper mini">
+              <div id="mini-map"></div>
+            </div>
+          </div>
+
+          <div class="panel-box" id="home-events-box">
+            <div class="panel-head">
+              <span>ЛЕНТА ПЕРЕХВАТОВ</span>
+              <span id="home-inc-count" style="color:var(--accent-phosphor);">0 СОБЫТИЙ</span>
+            </div>
+            <div id="home-events-list">
+              <div style="color:var(--ink-dim);font-size:12px;padding:20px 0;">
+                Акватория спокойна. Нажмите «ИМИТАЦИЯ ТРЕВОГИ», чтобы смоделировать обнаружение браконьерского катера или выстрела.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-3" style="margin-top:18px;">
+          <div class="panel-box">
+            <div class="panel-head"><span>ТЕМПЕРАТУРА ВОДЫ (СР.)</span><span>°C</span></div>
+            <div style="font-family:var(--font-display);font-size:28px;font-weight:800;" id="stat-temp">13.4 °C</div>
+            <div style="color:var(--ink-dim);font-size:11px;margin-top:6px;">Оптимум нереста осетровых: 12.0–16.0 °C</div>
+          </div>
+          <div class="panel-box">
+            <div class="panel-head"><span>СОЛЁНОСТЬ СЕКТОРА</span><span>‰</span></div>
+            <div style="font-family:var(--font-display);font-size:28px;font-weight:800;" id="stat-sal">7.3 ‰</div>
+            <div style="color:var(--ink-dim);font-size:11px;margin-top:6px;">Контроль опреснения стока Волги</div>
+          </div>
+          <div class="panel-box">
+            <div class="panel-head"><span>ЗОНЫ ВЫСОКОГО РИСКА</span><span>ML-ПРОГНОЗ</span></div>
+            <div style="font-family:var(--font-display);font-size:28px;font-weight:800;color:var(--accent-gold);" id="stat-zones">2 / 3</div>
+            <div style="color:var(--ink-dim);font-size:11px;margin-top:6px;">Нерест осетра и лежбище о. Тюлений</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ВКЛАДКА 2: ПОЛНОЭКРАННАЯ КАРТА МОНИТОРИНГА -->
+      <div class="tab-pane flush" id="tab-map">
+        <div class="map-wrapper">
+          <div id="main-map"></div>
+
+          <div class="map-hud-left">
+            <div style="font-size:10px;color:var(--ink-dim);letter-spacing:0.1em;margin-bottom:6px;">СЛОИ ТЕЛЕМЕТРИИ</div>
+            <label class="hud-check"><input type="checkbox" checked onchange="toggleLayer('buoys', this.checked)"> Гидроакустические буи (6)</label>
+            <label class="hud-check"><input type="checkbox" checked onchange="toggleLayer('zones', this.checked)"> Зоны нереста и лежбища</label>
+            <label class="hud-check"><input type="checkbox" checked onchange="toggleLayer('incidents', this.checked)"> Активные инциденты</label>
+            <label class="hud-check"><input type="checkbox" onchange="toggleLayer('animals', this.checked)"> Треки каспийского тюленя</label>
+            <button class="btn-raw danger" style="width:100%;margin-top:12px;padding:8px;border:1px solid var(--accent-alert);justify-content:center;" onclick="triggerSimulation()">СИМУЛЯЦИЯ ТРЕВОГИ</button>
+          </div>
+
+          <div class="map-hud-right" id="map-inspector-card">
+            <div style="font-size:10px;color:var(--accent-phosphor);letter-spacing:0.1em;margin-bottom:6px;">ИНСПЕКТОР ОБЪЕКТА</div>
+            <div id="map-pick-content" style="font-size:12px;color:var(--ink-dim);">
+              Кликните по маркеру буя, зоне риска или точке инцидента на карте для получения телеметрии.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ВКЛАДКА 3: МИГРАЦИЯ ЖИВОТНЫХ -->
+      <div class="tab-pane" id="tab-migration">
+        <div class="split-asymmetric">
+          <div class="panel-box">
+            <div class="panel-head">
+              <span>ПУТИ МИГРАЦИИ КАСПИЙСКОГО ТЮЛЕНЯ (PUSA CASPICA)</span>
+              <span style="color:var(--accent-gold);">ПРОГНОЗ +72 Ч</span>
+            </div>
+            <div class="map-wrapper mini" style="height:440px;">
+              <div id="migration-map"></div>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:18px;">
+            <div class="panel-box">
+              <div class="panel-head"><span>ВЕРОЯТНОСТЬ ЗАХОДА В ЗОНУ НЕРЕСТА</span></div>
+              <div style="font-family:var(--font-display);font-size:36px;font-weight:900;color:var(--accent-phosphor);">78%</div>
+              <div style="font-size:12px;color:var(--ink-dim);margin-top:8px;">
+                Похолодание воды у о. Тюлений до 12.5°C смещает косяки кильки и стадо тюленя на северо-запад.
+              </div>
+            </div>
+
+            <div class="panel-box">
+              <div class="panel-head"><span>СЕЗОННАЯ АКТИВНОСТЬ ПО МЕСЯЦАМ</span></div>
+              <div class="spectrum-bars" id="season-bars" style="height:130px;"></div>
+              <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--ink-dim);">
+                <span>ЯНВ</span><span>МАР</span><span>МАЙ</span><span>ИЮЛ</span><span>СЕН</span><span>ДЕК</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ВКЛАДКА 4: АКУСТИЧЕСКИЙ АНАЛИЗ -->
+      <div class="tab-pane" id="tab-audio">
+        <div class="split-asymmetric">
+          <div class="panel-box">
+            <div class="panel-head"><span>ПЕРЕХВАЧЕННЫЕ АУДИОФРАГМЕНТЫ С БУЁВ</span><span>16 kHz MONO</span></div>
+            <div id="audio-records-list"></div>
+
+            <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border-hair);">
+              <div style="font-size:11px;text-transform:uppercase;color:var(--ink-dim);margin-bottom:8px;">ЗАГРУЗИТЬ ЗАПИСЬ ГИДРОФОНА (.WAV / .MP3)</div>
+              <input type="file" accept=".wav,.mp3,audio/*" onchange="analyzeCustomFile(this)" style="font-family:var(--font-mono);font-size:11px;color:var(--ink-main);">
+            </div>
+          </div>
+
+          <div class="panel-box" id="audio-detail-box">
+            <div class="panel-head"><span>СПЕКТРАЛЬНЫЙ РАЗБОР СИГНАЛА</span><span id="audio-conf-tag" class="tag-pill crit">94% УГРОЗА</span></div>
+            <div style="font-family:var(--font-display);font-size:18px;font-weight:800;" id="audio-rec-title">Буй «о. Тюлений» · 02:14</div>
+            <div class="spectrum-bars crit" id="audio-spectrum"></div>
+            <div style="display:flex;gap:12px;margin-top:14px;">
+              <button class="btn-raw phosphor" style="padding:10px 16px;" onclick="playCurrentSample()">▶ СИНТЕЗ / ПРОСЛУШАТЬ СИГНАЛ</button>
+            </div>
+            <p id="audio-rec-desc" style="margin-top:14px;font-size:12px;color:var(--ink-dim);">
+              Характерная низкочастотная кавитация винта и выхлоп подвесного мотора мощностью ~250 л.с. в запретной зоне лежбища.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ВКЛАДКА 5: ВОДНАЯ АНАЛИТИКА -->
+      <div class="tab-pane" id="tab-water">
+        <div class="panel-box">
+          <div class="panel-head"><span>ПОКАЗАНИЯ ГИДРОЛОГИЧЕСКИХ ДАТЧИКОВ В РЕАЛЬНОМ ВРЕМЕНИ</span><span>ОБНОВЛЕНИЕ 3 СЕК</span></div>
+          <table class="raw-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>СТАНЦИЯ / БУЙ</th>
+                <th>КООРДИНАТЫ</th>
+                <th>ТЕМПЕРАТУРА</th>
+                <th>СОЛЁНОСТЬ</th>
+                <th>СТАТУС КОНТУРА</th>
+              </tr>
+            </thead>
+            <tbody id="buoys-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ВКЛАДКА 6: ЖУРНАЛ ИНЦИДЕНТОВ -->
+      <div class="tab-pane" id="tab-incidents">
+        <div class="split-asymmetric">
+          <div class="panel-box">
+            <div class="panel-head">
+              <span>ЖУРНАЛ ТРЕВОГ И ПЕРЕХВАТОВ</span>
+              <button class="btn-raw danger" style="padding:4px 10px;border:1px solid var(--accent-alert);" onclick="triggerSimulation()">+ ТЕСТОВЫЙ ВЫБРОС</button>
+            </div>
+            <table class="raw-table">
+              <thead>
+                <tr>
+                  <th>ВРЕМЯ</th>
+                  <th>ТИП УГРОЗЫ</th>
+                  <th>КООРДИНАТЫ</th>
+                  <th>ПРИОРИТЕТ</th>
+                  <th>СТАТУС</th>
+                </tr>
+              </thead>
+              <tbody id="incidents-table-body"></tbody>
+            </table>
+          </div>
+
+          <div class="panel-box" id="incident-inspector">
+            <div class="panel-head"><span>КАРТОЧКА РЕАГИРОВАНИЯ</span></div>
+            <div id="incident-detail-body" style="color:var(--ink-dim);font-size:12px;">
+              Выберите строку в журнале инцидентов слева, чтобы прослушать запись и направить катер береговой охраны.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ВКЛАДКА 7: НАСТРОЙКИ -->
+      <div class="tab-pane" id="tab-settings">
+        <div class="grid-3">
+          <div class="panel-box">
+            <div class="panel-head"><span>ПОРОГИ СРАБАТЫВАНИЯ ИИ</span></div>
+            <div class="spec-row"><span>Выстрел (dB)</span><span>> 125 dB / AST ≥ 0.20</span></div>
+            <div class="spec-row"><span>Мотор катера</span><span>50–500 Hz / AST ≥ 0.20</span></div>
+            <div class="spec-row"><span>Сброс / солёность</span><span>Δ > +2.5 ‰ за 10 мин</span></div>
+          </div>
+          <div class="panel-box">
+            <div class="panel-head"><span>КАНАЛЫ ОПОВЕЩЕНИЯ</span></div>
+            <label class="hud-check"><input type="checkbox" checked> Звуковой зуммер пульта</label>
+            <label class="hud-check"><input type="checkbox" checked> УКВ-радиоканал патруля (156.8 МГц)</label>
+            <label class="hud-check"><input type="checkbox" checked> Спутниковый пакет Iridium SBD</label>
+          </div>
+          <div class="panel-box">
+            <div class="panel-head"><span>АРХИТЕКТУРА API</span></div>
+            <div class="spec-row"><span>Эндпоинт</span><span>/api/state · /api/simulate</span></div>
+            <div class="spec-row"><span>Модель звука</span><span>MIT/ast-finetuned-audioset</span></div>
+            <div class="spec-row"><span>Контракт</span><span>CONTRACT.md v1.0</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ЭКРАН 3: УСТРОЙСТВО БУЯ (ТЕХНИЧЕСКИЙ ЧЕРТЕЖ) -->
+  <section class="hardware-section">
+    <div>
+      <div class="section-index">03 // АППАРАТНАЯ ЧАСТЬ</div>
+      <h2 class="section-h2">НЕ ТОЛЬКО СОФТ. ЖЕЛЕЗО, КОТОРОЕ ВЫЖИВАЕТ В ШТОРМ.</h2>
+      <p style="color:var(--ink-dim);margin-bottom:24px;max-width:48ch;">
+        Обычные камеры слепнут в тумане и ночью. Наш буй работает под поверхностью воды: титановый гидрофон слышит работу винта браконьерской «байды» за 12 километров ещё до того, как лодка войдёт в зону нереста.
+      </p>
+
+      <div class="spec-list">
+        <div class="spec-row"><span>Гидрофон</span><span>Пьезокерамический, 10 Гц – 24 кГц, глубина 4 м</span></div>
+        <div class="spec-row"><span>Вычислитель</span><span>Edge-DSP + квантованная модель AST на борту</span></div>
+        <div class="spec-row"><span>Связь</span><span>LoRaWAN + резервный спутниковый модем</span></div>
+        <div class="spec-row"><span>Корпус</span><span>ПНД повышенной плотности + ледовый пояс</span></div>
+      </div>
+    </div>
+
+    <div class="blueprint-box">
+      <div class="blueprint-caption">ЧЕРТЕЖ УЗЛА // БУЙ БГ-2026-К</div>
+      <svg viewBox="0 0 560 320" width="100%" height="auto" style="display:block;">
+        <!-- Сетка чертежа -->
+        <defs>
+          <pattern id="bp-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(230,228,220,0.06)" stroke-width="1"/>
+          </pattern>
+        </defs>
+        <rect width="560" height="320" fill="url(#bp-grid)" />
+
+        <!-- Ватерлиния -->
+        <line x1="20" y1="145" x2="540" y2="145" stroke="#48A999" stroke-width="1.5" stroke-dasharray="6 4" />
+        <text x="30" y="138" fill="#48A999" font-family="JetBrains Mono" font-size="10">УРОВЕНЬ ВОДЫ // 0.0 м</text>
+
+        <!-- Надводная антенна и маяк -->
+        <rect x="274" y="34" width="12" height="56" fill="none" stroke="#E6E4DC" stroke-width="1.5" />
+        <circle cx="280" cy="28" r="7" fill="#FF2600" />
+        <circle cx="280" cy="28" r="16" fill="none" stroke="#FF2600" stroke-width="1" stroke-dasharray="2 2" />
+
+        <!-- Поплавок буя -->
+        <polygon points="235,145 250,90 310,90 325,145" fill="#10151A" stroke="#E6E4DC" stroke-width="2" />
+        <rect x="242" y="145" width="76" height="36" fill="#0A0D10" stroke="#E6E4DC" stroke-width="2" />
+
+        <!-- Кабель-трос и гидрофон -->
+        <line x1="280" y1="181" x2="280" y2="265" stroke="#C8FF00" stroke-width="2" />
+        <rect x="268" y="255" width="24" height="34" fill="#10151A" stroke="#C8FF00" stroke-width="2" />
+
+        <!-- Акустические волны под водой -->
+        <circle cx="280" cy="272" r="34" fill="none" stroke="rgba(200,255,0,0.45)" stroke-width="1" />
+        <circle cx="280" cy="272" r="56" fill="none" stroke="rgba(200,255,0,0.22)" stroke-width="1" stroke-dasharray="4 4" />
+
+        <!-- Выноски -->
+        <line x1="296" y1="28" x2="365" y2="28" stroke="#7C8288" stroke-width="1" />
+        <text x="372" y="32" fill="#E6E4DC" font-family="JetBrains Mono" font-size="10">ИМПУЛЬСНЫЙ МАЯК + GPS</text>
+
+        <line x1="315" y1="115" x2="365" y2="115" stroke="#7C8288" stroke-width="1" />
+        <text x="372" y="119" fill="#E6E4DC" font-family="JetBrains Mono" font-size="10">БЛОК DSP И АКБ LiFePO4</text>
+
+        <line x1="292" y1="272" x2="365" y2="272" stroke="#C8FF00" stroke-width="1" />
+        <text x="372" y="276" fill="#C8FF00" font-family="JetBrains Mono" font-size="10">ГИДРОФОН (10 Гц – 24 кГц)</text>
+      </svg>
+    </div>
+  </section>
+
+  <footer style="padding:24px 28px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--ink-dim);">
+    <div>ЭКО-ЩИТ КАСПИЯ // СИСТЕМА РАННЕГО ОБНАРУЖЕНИЯ БРАКОНЬЕРСТВА</div>
+    <div>СЕВЕРНЫЙ КАСПИЙ · ДЕЛЬТА ВОЛГИ · О. ТЮЛЕНИЙ · 2026</div>
+  </footer>
+
+  <script>
+    // =========================================================================
+    // 1. КОНФИГУРАЦИЯ API БЭКЕНДА (FastAPI http://localhost:8000)
+    // =========================================================================
+    const API_BASE = 'http://localhost:8000';
+    let backendOnline = false;
+    let lastTopIncidentId = null;
+
+    const TYPES = {
+      boat: 'Браконьерский катер',
+      gunshot: 'Выстрел',
+      spill: 'Сброс / аномалия'
+    };
+
+    const CITIES = [
+      ['АСТРАХАНЬ', 46.35, 48.04],
+      ['МАХАЧКАЛА', 42.98, 47.50],
+      ['АТЫРАУ', 47.11, 51.92],
+      ['АКТАУ', 43.65, 51.15]
+    ];
+
+    const SIGHTINGS = [[44.45, 47.45], [44.5, 47.6], [44.3, 47.35], [44.7, 47.2], [44.9, 46.9], [45.1, 47.0], [44.6, 47.75]];
+    const ROUTES = [[[44.4, 47.5], [44.8, 47.1], [45.3, 47.4], [45.7, 48.2]], [[44.4, 47.5], [43.9, 47.7], [43.4, 47.6]]];
+    const FORECAST = [[45.7, 48.2], [46.0, 48.6], [46.2, 49.0]];
+    const SEASON = [20, 28, 35, 55, 78, 90, 70, 52, 40, 33, 25, 18];
+
+    const AUDIO_RECORDS = [
+      {
+        id: 1,
+        name: 'Буй «о. Тюлений» · 02:14',
+        type: 'boat',
+        label: 'Браконьерский катер',
+        conf: 94,
+        desc: 'Характерная низкочастотная кавитация винта и выхлоп подвесного мотора мощностью ~250 л.с. в запретной зоне лежбища.',
+        spectrum: [0.92, 0.88, 0.95, 0.76, 0.62, 0.54, 0.41, 0.35, 0.28, 0.22, 0.18, 0.14, 0.12, 0.1, 0.08, 0.06]
+      },
+      {
+        id: 2,
+        name: 'Буй «Дельта Волги-1» · 05:40',
+        type: 'wave',
+        label: 'Шум волн / норма',
+        conf: 88,
+        desc: 'Равномерный фоновый шум ветрового волнения 2 балла. Антропогенных и импульсных сигналов не выявлено.',
+        spectrum: [0.22, 0.25, 0.28, 0.24, 0.26, 0.23, 0.21, 0.19, 0.18, 0.17, 0.15, 0.14, 0.12, 0.11, 0.1, 0.09]
+      },
+      {
+        id: 3,
+        name: 'Буй «Кизлярский залив» · 07:05',
+        type: 'gunshot',
+        label: 'Выстрел',
+        conf: 91,
+        desc: 'Резкий широкополосный импульс (пик 146 dB, длительность 180 мс). Акустический профиль соответствует гладкоствольному ружью.',
+        spectrum: [0.65, 0.78, 0.98, 0.95, 0.91, 0.89, 0.84, 0.88, 0.82, 0.79, 0.74, 0.71, 0.68, 0.64, 0.58, 0.52]
+      }
+    ];
+
+    let state = {
+      buoys: [
+        { id: 1, name: 'Дельта Волги-1', lat: 45.85, lon: 48.20, temp: 14.0, salinity: 3.0, status: 'safe' },
+        { id: 2, name: 'Дельта Волги-2', lat: 45.60, lon: 48.60, temp: 14.5, salinity: 4.5, status: 'safe' },
+        { id: 3, name: 'Кизлярский залив', lat: 44.80, lon: 47.00, temp: 13.0, salinity: 9.0, status: 'safe' },
+        { id: 4, name: 'о. Тюлений', lat: 44.45, lon: 47.50, temp: 12.5, salinity: 11.0, status: 'safe' },
+        { id: 5, name: 'Махачкала', lat: 42.98, lon: 47.60, temp: 13.5, salinity: 12.0, status: 'safe' },
+        { id: 6, name: 'Аграханский залив', lat: 43.85, lon: 47.70, temp: 13.0, salinity: 10.0, status: 'safe' }
+      ],
+      risk_zones: [
+        { id: 'zone_1', name: 'Нерест осетра (дельта Волги)', risk: 0.84, reason: 'Вода 14.0°C, солёность 3.0‰ — благоприятно для нереста', polygon: [[45.5, 48.0], [46.0, 48.0], [46.0, 48.8], [45.5, 48.8]] },
+        { id: 'zone_2', name: 'Лежбище тюленя (о. Тюлений)', risk: 0.76, reason: 'Вода 12.5°C — повышенная активность тюленя', polygon: [[44.2, 47.2], [44.7, 47.2], [44.7, 47.8], [44.2, 47.8]] },
+        { id: 'zone_3', name: 'Миграция тюленя (Кизлярский залив)', risk: 0.58, reason: 'Вода 13.0°C — транзитный коридор', polygon: [[44.5, 46.6], [45.0, 46.6], [45.0, 47.3], [44.5, 47.3]] }
+      ],
+      hydrology: { avg_temp: 13.4, avg_salinity: 7.3, sea_level: -28.3 },
+      incidents: [],
+      selectedIncidentId: null,
+      selectedRecord: AUDIO_RECORDS[0],
+      layers: { buoys: true, zones: true, incidents: true, animals: false }
+    };
+
+    // =========================================================================
+    // 2. СИНХРОНИЗАЦИЯ С БЭКЕНДОМ (GET /api/state)
+    // =========================================================================
+    async function fetchState() {
+      try {
+        const res = await fetch(`${API_BASE}/api/state`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        backendOnline = true;
+        state.buoys = data.buoys || state.buoys;
+        state.risk_zones = data.risk_zones || state.risk_zones;
+        state.incidents = data.incidents || [];
+        if (data.hydrology) state.hydrology = data.hydrology;
+
+        // Реакция на приход нового инцидента с бэкенда
+        const topInc = state.incidents[0];
+        if (topInc && lastTopIncidentId !== null && topInc.id !== lastTopIncidentId) {
+          triggerVisualAlarm(topInc);
+        }
+        lastTopIncidentId = topInc ? topInc.id : 0;
+
+        if (!state.selectedIncidentId && state.incidents.length > 0) {
+          state.selectedIncidentId = state.incidents[0].id;
+        }
+
+        document.getElementById('hdr-buoys').textContent = `${state.buoys.length} / ${state.buoys.length} [API]`;
+        syncUI();
+      } catch (err) {
+        backendOnline = false;
+        document.getElementById('hdr-buoys').textContent = `${state.buoys.length} / ${state.buoys.length} [OFFLINE]`;
+      }
+    }
+
+    // =========================================================================
+    // 3. ЗВУКОВОЙ СИНТЕЗАТОР (WEB AUDIO API)
+    // =========================================================================
+    function playSound(type) {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const ctx = new AudioCtx();
+        const gain = ctx.createGain();
+        gain.connect(ctx.destination);
+        const now = ctx.currentTime;
+
+        if (type === 'gunshot') {
+          const len = ctx.sampleRate * 0.45;
+          const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < len; i++) {
+            data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.11));
+          }
+          const src = ctx.createBufferSource();
+          src.buffer = buffer;
+          src.connect(gain);
+          gain.gain.setValueAtTime(0.7, now);
+          src.start();
+        } else if (type === 'boat') {
+          const osc = ctx.createOscillator();
+          const lfo = ctx.createOscillator();
+          const lfoGain = ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.value = 78;
+          lfo.frequency.value = 15;
+          lfoGain.gain.value = 18;
+          lfo.connect(lfoGain);
+          lfoGain.connect(osc.frequency);
+          gain.gain.setValueAtTime(0.22, now);
+          gain.gain.linearRampToValueAtTime(0, now + 2.2);
+          osc.connect(gain);
+          osc.start(now);
+          lfo.start(now);
+          osc.stop(now + 2.2);
+          lfo.stop(now + 2.2);
+        } else {
+          const osc = ctx.createOscillator();
+          osc.type = 'sine';
+          osc.frequency.value = 180;
+          gain.gain.setValueAtTime(0.06, now);
+          gain.gain.linearRampToValueAtTime(0, now + 1.8);
+          osc.connect(gain);
+          osc.start(now);
+          osc.stop(now + 1.8);
+        }
+      } catch (e) {}
+    }
+
+    // =========================================================================
+    // 4. ЖИВОЙ ОСЦИЛЛОГРАФ НА ПЕРВОМ ЭКРАНЕ (CANVAS)
+    // =========================================================================
+    let shockIntensity = 0;
+    const canvas = document.getElementById('hydro-canvas');
+    const ctx2d = canvas.getContext('2d');
+
+    function resizeCanvas() {
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width * window.devicePixelRatio;
+      canvas.height = rect.height * window.devicePixelRatio;
+      ctx2d.scale(window.devicePixelRatio, window.devicePixelRatio);
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    let phase = 0;
+    function renderScope() {
+      const w = canvas.width / window.devicePixelRatio;
+      const h = canvas.height / window.devicePixelRatio;
+      ctx2d.clearRect(0, 0, w, h);
+
+      ctx2d.strokeStyle = 'rgba(230, 228, 220, 0.045)';
+      ctx2d.lineWidth = 1;
+      const step = 48;
+      for (let x = 0; x < w; x += step) {
+        ctx2d.beginPath();
+        ctx2d.moveTo(x, 0);
+        ctx2d.lineTo(x, h);
+        ctx2d.stroke();
+      }
+      for (let y = 0; y < h; y += step) {
+        ctx2d.beginPath();
+        ctx2d.moveTo(0, y);
+        ctx2d.lineTo(w, y);
+        ctx2d.stroke();
+      }
+
+      const isAlert = shockIntensity > 0.15;
+      for (let l = 0; l < 3; l++) {
+        ctx2d.beginPath();
+        ctx2d.strokeStyle = isAlert
+          ? (l === 0 ? '#FF2600' : 'rgba(255, 38, 0, 0.35)')
+          : (l === 0 ? '#C8FF00' : 'rgba(200, 255, 0, 0.18)');
+        ctx2d.lineWidth = l === 0 ? 2 : 1;
+
+        const baseY = h * 0.56 + l * 14;
+        for (let x = 0; x <= w; x += 4) {
+          const normX = x / w;
+          const envelope = Math.sin(normX * Math.PI);
+          const calmWave = Math.sin(x * 0.012 + phase + l) * 14 * envelope;
+          const spike = shockIntensity > 0
+            ? (Math.sin(x * 0.09 - phase * 4) * 135 * shockIntensity * Math.exp(-Math.pow((normX - 0.52) * 5, 2)))
+            : 0;
+          const y = baseY + calmWave + spike;
+          if (x === 0) ctx2d.moveTo(x, y);
+          else ctx2d.lineTo(x, y);
+        }
+        ctx2d.stroke();
+      }
+
+      phase += isAlert ? 0.16 : 0.025;
+      if (shockIntensity > 0) {
+        shockIntensity = Math.max(0, shockIntensity - 0.012);
+        const db = (34.2 + shockIntensity * 114).toFixed(1);
+        const dbEl = document.getElementById('db-readout');
+        dbEl.textContent = db + ' dB';
+        if (shockIntensity > 0.15) {
+          dbEl.classList.add('alert');
+        } else {
+          dbEl.classList.remove('alert');
+          document.getElementById('hero-class-label').textContent = 'ШУМ ВОЛН / НОРМА';
+          document.getElementById('hero-class-label').style.color = 'var(--accent-phosphor)';
+          document.getElementById('hero-state-word').textContent = 'ПОД КОНТРОЛЕМ';
+        }
+      }
+      requestAnimationFrame(renderScope);
+    }
+    renderScope();
+
+    // =========================================================================
+    // 5. КАРТЫ LEAFLET (ГЛАВНАЯ, МИНИ-КАРТА, МИГРАЦИЯ)
+    // =========================================================================
+    let maps = {};
+    let mapLayers = {};
+
+    function initMaps() {
+      const tileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+
+      ['mini-map', 'main-map', 'migration-map'].forEach(id => {
+        const zoom = id === 'mini-map' ? 6 : 7;
+        const m = L.map(id, { zoomControl: id !== 'mini-map', attributionControl: false }).setView([44.65, 47.8], zoom);
+        L.tileLayer(tileUrl, { maxZoom: 12 }).addTo(m);
+
+        CITIES.forEach(([name, lat, lon]) => {
+          L.marker([lat, lon], {
+            icon: L.divIcon({ className: '', html: `<div class="city-label">+ ${name}</div>`, iconSize: [100, 14] }),
+            interactive: false
+          }).addTo(m);
+        });
+
+        maps[id] = m;
+        mapLayers[id] = {
+          zones: L.layerGroup().addTo(m),
+          buoys: L.layerGroup().addTo(m),
+          incidents: L.layerGroup().addTo(m),
+          animals: L.layerGroup().addTo(m)
+        };
+      });
+
+      renderAllMaps();
+    }
+
+    function renderAllMaps() {
+      ['mini-map', 'main-map', 'migration-map'].forEach(id => {
+        const g = mapLayers[id];
+        if (!g) return;
+        Object.values(g).forEach(l => l.clearLayers());
+
+        const showZones = id === 'migration-map' ? true : state.layers.zones;
+        const showBuoys = id === 'migration-map' ? false : state.layers.buoys;
+        const showInc = id === 'migration-map' ? false : state.layers.incidents;
+        const showAnimals = id === 'migration-map' ? true : state.layers.animals;
+
+        if (showZones) {
+          state.risk_zones.forEach(z => {
+            const color = z.risk > 0.7 ? '#FF2600' : '#E5B842';
+            const poly = L.polygon(z.polygon, { color, weight: 1.5, fillOpacity: 0.18 }).addTo(g.zones);
+            if (id === 'main-map') {
+              poly.on('click', () => showMapPick('ЗОНА РИСКА', `<b>${z.name}</b><br>Индекс риска: ${Math.round(z.risk * 100)}%<br><span style="color:var(--ink-dim)">${z.reason}</span>`));
+            }
+          });
+        }
+
+        if (showBuoys) {
+          state.buoys.forEach(b => {
+            const icon = L.divIcon({
+              className: '',
+              html: `<div class="buoy-pin ${b.status === 'critical' ? 'crit' : ''}"></div>`,
+              iconSize: [14, 14],
+              iconAnchor: [7, 7]
+            });
+            const m = L.marker([b.lat, b.lon], { icon }).addTo(g.buoys);
+            if (id === 'main-map') {
+              m.on('click', () => showMapPick('ГИДРОАКУСТИЧЕСКИЙ БУЙ', `<b>${b.name}</b><br>Вода: ${b.temp}°C · Солёность: ${b.salinity}‰<br>Статус: <b style="color:${b.status === 'critical' ? 'var(--accent-alert)' : 'var(--accent-phosphor)'}">${b.status === 'critical' ? 'ТРЕВОГА' : 'ШТАТНО'}</b>`));
+            }
+          });
+        }
+
+        if (showInc) {
+          state.incidents.forEach(inc => {
+            const icon = L.divIcon({
+              className: '',
+              html: `<div class="inc-pin"></div>`,
+              iconSize: [18, 18],
+              iconAnchor: [9, 9]
+            });
+            const m = L.marker([inc.lat, inc.lon], { icon }).addTo(g.incidents);
+            if (id === 'main-map') {
+              m.on('click', () => showMapPick('ПЕРЕХВАТ СИГНАЛА', `<b>${TYPES[inc.type] || inc.type}</b><br>${inc.message}<br>Координаты: ${inc.lat}, ${inc.lon}`));
+            }
+          });
+        }
+
+        if (showAnimals) {
+          SIGHTINGS.forEach(p => L.circleMarker(p, { radius: 5, color: '#E5B842', fillColor: '#E5B842', fillOpacity: 0.9 }).addTo(g.animals));
+          ROUTES.forEach(r => L.polyline(r, { color: '#48A999', weight: 2.5 }).addTo(g.animals));
+          L.polyline(FORECAST, { color: '#E5B842', weight: 2.5, dashArray: '6 6' }).addTo(g.animals);
+        }
+      });
+    }
+
+    function showMapPick(title, html) {
+      document.getElementById('map-pick-content').innerHTML = `<div style="color:var(--ink-main);margin-top:4px;">${html}</div>`;
+    }
+
+    function toggleLayer(key, checked) {
+      state.layers[key] = checked;
+      renderAllMaps();
+    }
+
+    // =========================================================================
+    // 6. СИМУЛЯЦИЯ ТРЕВОГИ (POST /api/simulate) И ОТПРАВКА ПАТРУЛЯ
+    // =========================================================================
+    function showToast(msg, isErr = false) {
+      const stack = document.getElementById('toast-stack');
+      const el = document.createElement('div');
+      el.className = 'toast-item' + (isErr ? ' err' : '');
+      el.textContent = msg;
+      stack.appendChild(el);
+      setTimeout(() => el.remove(), 3600);
+    }
+
+    function triggerVisualAlarm(inc) {
+      shockIntensity = 1.0;
+      document.body.classList.remove('alarm-flash');
+      void document.body.offsetWidth;
+      document.body.classList.add('alarm-flash');
+
+      const kind = inc?.type || 'gunshot';
+      playSound(kind === 'spill' ? 'boat' : kind);
+
+      document.getElementById('hero-class-label').textContent = (TYPES[kind] || kind).toUpperCase();
+      document.getElementById('hero-class-label').style.color = 'var(--accent-alert)';
+      document.getElementById('hero-state-word').textContent = 'НАРУШЕНА // ТРЕВОГА';
+
+      showToast(`ТРЕВОГА: ${TYPES[kind] || kind} (${inc.lat}, ${inc.lon})`, true);
+    }
+
+    async function triggerSimulation() {
+      try {
+        const res = await fetch(`${API_BASE}/api/simulate`, { method: 'POST' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const inc = await res.json();
+        lastTopIncidentId = inc.id;
+        state.selectedIncidentId = inc.id;
+        triggerVisualAlarm(inc);
+        await fetchState();
+      } catch (err) {
+        showToast('Нет связи с FastAPI (http://localhost:8000/api/simulate). Проверьте запуск backend/main.py', true);
+      }
+    }
+
+    async function dispatchPatrol(id) {
+      try {
+        const res = await fetch(`${API_BASE}/api/incidents/${id}/dispatch`, { method: 'POST' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        showToast(`Патруль направлен по инциденту #${id}`);
+        await fetchState();
+      } catch (err) {
+        showToast('Ошибка отправки команды на сервер /api/incidents/dispatch', true);
+      }
+    }
+
+    function formatTime(t) {
+      if (!t) return '';
+      return t.includes('T') ? t.slice(11, 19) : t;
+    }
+
+    function syncUI() {
+      const activeCount = state.incidents.filter(i => i.status === 'Новый').length;
+      document.getElementById('hdr-threats').textContent = activeCount;
+      const led = document.getElementById('global-led');
+      if (activeCount > 0) led.classList.add('alert');
+      else led.classList.remove('alert');
+
+      const badge = document.getElementById('nav-inc-badge');
+      badge.style.display = activeCount > 0 ? 'inline-block' : 'none';
+      badge.textContent = activeCount;
+
+      document.getElementById('home-inc-count').textContent = `${state.incidents.length} СОБЫТИЙ`;
+
+      // Гидрология из /api/state
+      const avgT = state.hydrology?.avg_temp ?? (state.buoys.reduce((s, b) => s + b.temp, 0) / state.buoys.length).toFixed(1);
+      const avgS = state.hydrology?.avg_salinity ?? (state.buoys.reduce((s, b) => s + b.salinity, 0) / state.buoys.length).toFixed(1);
+      document.getElementById('hdr-temp').textContent = avgT + ' °C';
+      document.getElementById('hdr-sal').textContent = avgS + ' ‰';
+      document.getElementById('stat-temp').textContent = avgT + ' °C';
+      document.getElementById('stat-sal').textContent = avgS + ' ‰';
+
+      const highZones = state.risk_zones.filter(z => z.risk > 0.7).length;
+      document.getElementById('stat-zones').textContent = `${highZones} / ${state.risk_zones.length}`;
+
+      // Список на главной
+      const homeList = document.getElementById('home-events-list');
+      if (state.incidents.length === 0) {
+        homeList.innerHTML = `<div style="color:var(--ink-dim);font-size:12px;padding:16px 0;">Акватория спокойна. Нажмите «ИМИТАЦИЯ ТРЕВОГИ» в верхней панели.</div>`;
+      } else {
+        homeList.innerHTML = state.incidents.slice(0, 5).map(i => `
+          <div class="event-row crit" onclick="openIncident(${i.id})">
+            <span class="tag-pill crit">${formatTime(i.time)}</span>
+            <div>
+              <div style="font-weight:700;">${TYPES[i.type] || i.type}</div>
+              <div style="font-size:11px;color:var(--ink-dim);">${i.message}</div>
+            </div>
+            <span style="font-size:11px;color:${i.status === 'Новый' ? 'var(--accent-alert)' : 'var(--accent-phosphor)'}">${i.status}</span>
+          </div>
+        `).join('');
+      }
+
+      // Таблица буёв
+      document.getElementById('buoys-table-body').innerHTML = state.buoys.map(b => `
+        <tr>
+          <td>#0${b.id}</td>
+          <td><b>${b.name}</b></td>
+          <td>${Number(b.lat).toFixed(2)}° N, ${Number(b.lon).toFixed(2)}° E</td>
+          <td>${Number(b.temp).toFixed(1)} °C</td>
+          <td>${Number(b.salinity).toFixed(1)} ‰</td>
+          <td><span class="tag-pill ${b.status === 'critical' ? 'crit' : 'ok'}">${b.status === 'critical' ? 'ТРЕВОГА' : 'НОРМА'}</span></td>
+        </tr>
+      `).join('');
+
+      // Таблица инцидентов
+      const incBody = document.getElementById('incidents-table-body');
+      if (state.incidents.length === 0) {
+        incBody.innerHTML = `<tr><td colspan="5" style="color:var(--ink-dim);">Инцидентов за смену не зафиксировано.</td></tr>`;
+      } else {
+        incBody.innerHTML = state.incidents.map(i => `
+          <tr onclick="selectIncident(${i.id})">
+            <td>${formatTime(i.time)}</td>
+            <td><b>${TYPES[i.type] || i.type}</b></td>
+            <td>${i.lat}, ${i.lon}</td>
+            <td><span class="tag-pill ${i.priority === 'high' ? 'crit' : ''}">${i.priority === 'high' ? 'ВЫСОКИЙ' : 'СРЕДНИЙ'}</span></td>
+            <td>${i.status}</td>
+          </tr>
+        `).join('');
+      }
+
+      renderIncidentDetail();
+      renderAllMaps();
+    }
+
+    function openIncident(id) {
+      state.selectedIncidentId = id;
+      switchTab('incidents', document.querySelector('[data-tab=incidents]'));
+      renderIncidentDetail();
+    }
+
+    function selectIncident(id) {
+      state.selectedIncidentId = id;
+      renderIncidentDetail();
+    }
+
+    function renderIncidentDetail() {
+      const box = document.getElementById('incident-detail-body');
+      const inc = state.incidents.find(i => i.id === state.selectedIncidentId);
+      if (!inc) return;
+      box.innerHTML = `
+        <div style="font-family:var(--font-display);font-size:18px;font-weight:800;color:var(--ink-main);margin-bottom:8px;">
+          ${TYPES[inc.type] || inc.type} #${inc.id}
+        </div>
+        <p style="color:var(--ink-main);margin-bottom:12px;">${inc.message}</p>
+        <div class="spec-row"><span>Координаты</span><span>${inc.lat}° N, ${inc.lon}° E</span></div>
+        <div class="spec-row"><span>Уверенность ИИ</span><span>${Math.round(inc.confidence * 100)}% (AST)</span></div>
+        <div class="spec-row"><span>Статус</span><span>${inc.status}</span></div>
+        <div style="display:flex;gap:10px;margin-top:16px;">
+          <button class="btn-raw" style="border:1px solid var(--border-strong);padding:10px 14px;" onclick="playSound('${inc.type === 'spill' ? 'boat' : inc.type}')">▶ ЗВУК</button>
+          <button class="btn-raw phosphor" style="padding:10px 14px;" ${inc.status !== 'Новый' ? 'disabled' : ''} onclick="dispatchPatrol(${inc.id})">
+            ${inc.status === 'Новый' ? 'НАПРАВИТЬ ПАТРУЛЬ' : 'ПАТРУЛЬ В ПУТИ'}
+          </button>
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // 7. АКУСТИЧЕСКАЯ ЛАБОРАТОРИЯ (POST /api/analyze-audio) И ВКЛАДКИ
+    // =========================================================================
+    function initAudioLab() {
+      const list = document.getElementById('audio-records-list');
+      list.innerHTML = AUDIO_RECORDS.map(r => `
+        <div class="event-row ${r.type !== 'wave' ? 'crit' : ''}" onclick="pickAudioRecord(${r.id})">
+          <span class="tag-pill ${r.type !== 'wave' ? 'crit' : 'ok'}">${r.conf}%</span>
+          <div>
+            <div style="font-weight:700;">${r.name}</div>
+            <div style="font-size:11px;color:var(--ink-dim);">${r.label}</div>
+          </div>
+          <span>→</span>
+        </div>
+      `).join('');
+
+      document.getElementById('season-bars').innerHTML = SEASON.map(v => `<i style="height:${v}%"></i>`).join('');
+      pickAudioRecord(1);
+    }
+
+    function pickAudioRecord(id) {
+      const r = AUDIO_RECORDS.find(x => x.id === id);
+      if (!r) return;
+      state.selectedRecord = r;
+      document.getElementById('audio-rec-title').textContent = r.name;
+      document.getElementById('audio-rec-desc').textContent = r.desc;
+      const tag = document.getElementById('audio-conf-tag');
+      tag.textContent = `${r.conf}% ${r.type !== 'wave' ? 'УГРОЗА' : 'НОРМА'}`;
+      tag.className = 'tag-pill ' + (r.type !== 'wave' ? 'crit' : 'ok');
+
+      const bars = document.getElementById('audio-spectrum');
+      bars.className = 'spectrum-bars ' + (r.type !== 'wave' ? 'crit' : '');
+      bars.innerHTML = r.spectrum.map(v => `<i style="height:${Math.round(v * 100)}%"></i>`).join('');
+    }
+
+    function playCurrentSample() {
+      playSound(state.selectedRecord.type);
+    }
+
+    async function analyzeCustomFile(input) {
+      if (!input.files || !input.files[0]) return;
+      const file = input.files[0];
+      const fd = new FormData();
+      fd.append('file', file);
+
+      document.getElementById('audio-rec-title').textContent = `Анализ: ${file.name}...`;
+      try {
+        const res = await fetch(`${API_BASE}/api/analyze-audio`, { method: 'POST', body: fd });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        const isThreat = data.label !== 'Шум волн/Норма';
+        document.getElementById('audio-rec-title').textContent = `Файл: ${file.name} (${data.engine || 'AST'})`;
+        document.getElementById('audio-rec-desc').textContent = `Результат классификатора: ${data.label}. Уверенность: ${data.confidence}%.`;
+        const tag = document.getElementById('audio-conf-tag');
+        tag.textContent = `${data.confidence}% ${isThreat ? 'УГРОЗА' : 'НОРМА'}`;
+        tag.className = 'tag-pill ' + (isThreat ? 'crit' : 'ok');
+
+        const bars = document.getElementById('audio-spectrum');
+        bars.className = 'spectrum-bars ' + (isThreat ? 'crit' : '');
+        bars.innerHTML = (data.spectrum || []).map(v => `<i style="height:${Math.max(4, Math.round(v * 100))}%"></i>`).join('');
+
+        showToast(`Файл «${file.name}»: ${data.label} (${data.confidence}%)`, isThreat);
+        await fetchState();
+      } catch (err) {
+        showToast('Не удалось отправить аудио на http://localhost:8000/api/analyze-audio', true);
+      }
+      input.value = '';
+    }
+
+    function switchTab(tabId, btn) {
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.rail-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-' + tabId).classList.add('active');
+      if (btn) btn.classList.add('active');
+      if (btn) document.getElementById('viewport-title').textContent = btn.innerText.replace(/\d+$/, '').trim();
+
+      setTimeout(() => {
+        Object.values(maps).forEach(m => m && m.invalidateSize());
+      }, 60);
+    }
+
+    // Опрос реального бэкенда каждые 3 секунды
+    setInterval(fetchState, 3000);
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initMaps();
+      initAudioLab();
+      syncUI();
+      fetchState();
+    });
+  </script>
+</body>
 </html>
