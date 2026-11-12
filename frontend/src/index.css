@@ -1,0 +1,39 @@
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:#020617;color:#e2e8f0;font-family:system-ui,sans-serif;overflow:hidden}
+#root{height:100vh;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:16px;padding:10px 16px;background:rgba(15,23,42,.95);border-bottom:1px solid #1e293b}
+.logo{font-weight:700;font-size:18px;color:#10b981}
+.badge{font-size:13px;color:#94a3b8}
+.spacer{flex:1}
+.btn{border:0;border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer;color:#fff;background:#334155}
+.btn.danger{background:#e11d48}
+.btn.ok{background:#059669}
+.btn:disabled{opacity:.5;cursor:default}
+.main{flex:1;display:grid;grid-template-columns:320px 1fr 320px;min-height:0}
+.panel{background:rgba(15,23,42,.92);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
+.panel.left{border-right:1px solid #1e293b}
+.panel.right{border-left:1px solid #1e293b}
+.card{background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:10px}
+.card h3{margin:0 0 8px;font-size:13px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em}
+.hydro{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center}
+.hydro b{display:block;font-size:18px;color:#38bdf8}
+.hydro span{font-size:11px;color:#94a3b8}
+.alert{padding:8px;border-radius:8px;border-left:4px solid #f59e0b;background:#111c33;margin-bottom:6px;cursor:pointer;font-size:13px}
+.alert.high{border-left-color:#f43f5e}
+.alert.sel{outline:1px solid #38bdf8}
+.alert small{color:#94a3b8;display:block;margin-top:2px}
+.tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:6px;background:#7f1d1d;color:#fecaca;margin-left:4px}
+.map{height:100%;width:100%;background:#020617}
+.bars{display:flex;align-items:flex-end;gap:2px;height:70px;margin:8px 0}
+.bars i{flex:1;background:#38bdf8;border-radius:2px 2px 0 0}
+.row{display:flex;gap:8px;margin-top:8px}
+.muted{color:#94a3b8;font-size:13px}
+.dot{width:16px;height:16px;border-radius:50%;position:relative;border:2px solid #fff}
+.dot.ok{background:#10b981}
+.dot.crit{background:#f43f5e}
+.dot.crit::after,.dot.ok::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:2px solid currentColor;animation:pulse 1.6s infinite}
+.dot.ok{color:#10b981}.dot.crit{color:#f43f5e}
+.dot.inc{background:#f59e0b;color:#f59e0b;border-radius:3px;transform:rotate(45deg)}
+@keyframes pulse{0%{transform:scale(.6);opacity:1}100%{transform:scale(2);opacity:0}}
+input[type=file]{font-size:12px;color:#94a3b8;width:100%}
