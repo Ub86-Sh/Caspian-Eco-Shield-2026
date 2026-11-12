@@ -4,224 +4,353 @@ import 'leaflet/dist/leaflet.css'
 
 const API = 'http://localhost:8000'
 const TYPES = { boat: 'Браконьерский катер', gunshot: 'Выстрел', spill: 'Сброс / аномалия' }
-const riskColor = r => (r > 0.7 ? '#f43f5e' : r > 0.4 ? '#f59e0b' : '#10b981')
-const dot = cls => L.divIcon({ className: '', html: `<div class="dot ${cls}"></div>`, iconSize: [16, 16], iconAnchor: [8, 8] })
+const NAV = [
+  ['home', 'Главная', '🏠'], ['map', 'Карта мониторинга', '🗺️'], ['migration', 'Миграция животных', '🦭'],
+  ['audio', 'Акустический анализ', '🎧'], ['sat', 'Спутниковый анализ', '🛰️'], ['water', 'Водная аналитика', '💧'],
+  ['incidents', 'Инциденты', '⚠️'], ['settings', 'Настройки', '⚙️'],
+]
+const GOLD = '#D8C66A', WATER = '#83B7AC'
+const riskColor = r => (r > 0.7 ? '#E5604D' : r > 0.4 ? '#D8C66A' : '#83B7AC')
+const dot = c => L.divIcon({ className: '', html: `<div class="dot ${c}"></div>`, iconSize: [16, 16], iconAnchor: [8, 8] })
+const CITIES = [['Астрахань', 46.35, 48.04], ['Махачкала', 42.98, 47.5], ['Атырау', 47.11, 51.92], ['Актау', 43.65, 51.15], ['Баку', 40.41, 49.87]]
+const SIGHTINGS = [[44.45, 47.45], [44.5, 47.6], [44.3, 47.35], [44.7, 47.2], [44.9, 46.9], [45.1, 47.0], [44.6, 47.75]]
+const ROUTES = [[[44.4, 47.5], [44.8, 47.1], [45.3, 47.4], [45.7, 48.2]], [[44.4, 47.5], [43.9, 47.7], [43.4, 47.6]]]
+const FORECAST = [[45.7, 48.2], [46.0, 48.6], [46.2, 49.0]]
+const RECORDS = [
+  { id: 1, name: 'Буй «о. Тюлений» · 02:14', type: 'boat', label: 'Браконьерский катер', conf: 94 },
+  { id: 2, name: 'Буй «Дельта Волги-1» · 05:40', type: 'wave', label: 'Шум волн / норма', conf: 88 },
+  { id: 3, name: 'Буй «Кизлярский залив» · 07:05', type: 'gunshot', label: 'Выстрел', conf: 91 },
+]
+const SEASON = [20, 28, 35, 55, 78, 90, 70, 52, 40, 33, 25, 18]
 
-function fakeSpectrum(inc) {
-  let s = inc.id * 9301 + 49297
-  const rnd = () => { s = (s * 9301 + 49297) % 233280; return s / 233280 }
-  return Array.from({ length: 32 }, (_, i) => {
-    const base = inc.type === 'boat' ? Math.exp(-i / 8) : inc.type === 'gunshot' ? 0.35 + 0.4 * (i / 32) : 0.5 * Math.exp(-((i - 16) ** 2) / 60)
-    return Math.min(1, base * (0.6 + 0.6 * rnd()))
-  })
-}
+const seeded = s => () => { s = (s * 9301 + 49297) % 233280; return s / 233280 }
+const series = (seed, base, amp, n = 24) => { const r = seeded(seed); let v = base; return Array.from({ length: n }, () => (v += (r() - 0.5) * amp, +v.toFixed(2))) }
 
 function play(type) {
   const C = window.AudioContext || window.webkitAudioContext
-  const ctx = new C()
-  const g = ctx.createGain()
-  g.connect(ctx.destination)
+  const ctx = new C(), g = ctx.createGain(); g.connect(ctx.destination)
   const t = ctx.currentTime
   if (type === 'gunshot') {
-    const len = ctx.sampleRate * 0.4
-    const b = ctx.createBuffer(1, len, ctx.sampleRate)
-    const d = b.getChannelData(0)
+    const len = ctx.sampleRate * 0.4, b = ctx.createBuffer(1, len, ctx.sampleRate), d = b.getChannelData(0)
     for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.12))
-    const s = ctx.createBufferSource()
-    s.buffer = b
-    s.connect(g)
-    g.gain.value = 0.8
-    s.start()
+    const s = ctx.createBufferSource(); s.buffer = b; s.connect(g); g.gain.value = 0.8; s.start()
   } else {
-    const o = ctx.createOscillator()
+    const o = ctx.createOscillator(), lfo = ctx.createOscillator(), lg = ctx.createGain()
     o.type = type === 'boat' ? 'sawtooth' : 'sine'
-    o.frequency.value = type === 'boat' ? 85 : 600
-    const lfo = ctx.createOscillator()
-    lfo.frequency.value = type === 'boat' ? 14 : 4
-    const lg = ctx.createGain()
-    lg.gain.value = type === 'boat' ? 20 : 0
-    lfo.connect(lg)
-    lg.connect(o.frequency)
-    g.gain.setValueAtTime(0.25, t)
-    g.gain.linearRampToValueAtTime(0, t + 3)
-    o.connect(g)
-    o.start(t); lfo.start(t); o.stop(t + 3); lfo.stop(t + 3)
+    o.frequency.value = type === 'boat' ? 85 : 220
+    lfo.frequency.value = type === 'boat' ? 14 : 0.5
+    lg.gain.value = type === 'boat' ? 20 : 30
+    lfo.connect(lg); lg.connect(o.frequency)
+    g.gain.setValueAtTime(type === 'boat' ? 0.25 : 0.08, t); g.gain.linearRampToValueAtTime(0, t + 3)
+    o.connect(g); o.start(t); lfo.start(t); o.stop(t + 3); lfo.stop(t + 3)
   }
+}
+
+function Card({ title, right, cls = '', children }) {
+  return <div className={'card ' + cls}>{title && <div className="ct"><span>{title}</span>{right}</div>}{children}</div>
+}
+function Stat({ label, value, unit, sub, cls }) {
+  return <Card title={label} cls={cls}><div className="big">{value}{unit && <small> {unit}</small>}</div>{sub && <div className="sub">{sub}</div>}</Card>
+}
+function Chart({ data, color = '#48543A', h = 110 }) {
+  const w = 320, mn = Math.min(...data), mx = Math.max(...data), r = mx - mn || 1
+  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - 8 - ((v - mn) / r) * (h - 24)}`)
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="chart" preserveAspectRatio="none">
+      <polygon points={`0,${h} ${pts.join(' ')} ${w},${h}`} fill={color} opacity=".2" />
+      <polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth="2.5" />
+    </svg>
+  )
+}
+function Wave({ seed, type, crit }) {
+  const r = seeded(seed)
+  return (
+    <div className="wave">
+      {Array.from({ length: 90 }, (_, i) => {
+        const env = type === 'gunshot' ? Math.exp(-Math.abs(i - 30) / 6) : type === 'boat' ? 0.5 + 0.4 * Math.sin(i / 4) : 0.25 + 0.15 * Math.sin(i / 9)
+        return <i key={i} style={{ height: Math.max(4, env * (0.5 + r()) * 100) + '%', background: crit ? '#E5604D' : '#83B7AC' }} />
+      })}
+    </div>
+  )
+}
+
+function MapView({ data, layers, onPick, focus, center = [44.5, 47.8], zoom = 6 }) {
+  const el = useRef(null), map = useRef(null), grp = useRef({})
+  useEffect(() => {
+    const m = L.map(el.current, { zoomControl: false }).setView(center, zoom)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', { attribution: '© OpenStreetMap © CARTO' }).addTo(m)
+    L.control.zoom({ position: 'bottomright' }).addTo(m)
+    CITIES.forEach(([n, a, b]) => L.marker([a, b], { icon: L.divIcon({ className: '', html: `<div class="city">● ${n}</div>`, iconSize: [90, 14] }), interactive: false }).addTo(m))
+    L.marker([41.9, 50.8], { icon: L.divIcon({ className: '', html: '<div class="sea-l">КАСПИЙСКОЕ МОРЕ</div>', iconSize: [220, 20] }), interactive: false }).addTo(m)
+    grp.current = { zones: L.layerGroup().addTo(m), buoys: L.layerGroup().addTo(m), incidents: L.layerGroup().addTo(m), animals: L.layerGroup().addTo(m) }
+    map.current = m
+    setTimeout(() => m.invalidateSize(), 100)
+    return () => m.remove()
+  }, [])
+  useEffect(() => {
+    const g = grp.current
+    if (!data || !g.zones) return
+    Object.values(g).forEach(x => x.clearLayers())
+    if (layers.zones) data.risk_zones.forEach(z => L.polygon(z.polygon, { color: riskColor(z.risk), weight: 1.5, fillOpacity: 0.3 }).on('click', () => onPick && onPick({ kind: 'zone', obj: z })).addTo(g.zones))
+    if (layers.buoys) data.buoys.forEach(b => L.marker([b.lat, b.lon], { icon: dot(b.status === 'critical' ? 'crit' : 'ok') }).on('click', () => onPick && onPick({ kind: 'buoy', obj: b })).addTo(g.buoys))
+    if (layers.incidents) data.incidents.forEach(i => L.marker([i.lat, i.lon], { icon: dot('inc') }).on('click', () => onPick && onPick({ kind: 'incident', obj: i })).addTo(g.incidents))
+    if (layers.animals) {
+      SIGHTINGS.forEach(p => L.circleMarker(p, { radius: 5, color: GOLD, fillColor: GOLD, fillOpacity: 0.9, weight: 1 }).addTo(g.animals))
+      ROUTES.forEach(r => L.polyline(r, { color: WATER, weight: 3 }).addTo(g.animals))
+      L.polyline(FORECAST, { color: GOLD, weight: 3, dashArray: '8 8' }).addTo(g.animals)
+    }
+  }, [data, layers])
+  useEffect(() => { if (focus && map.current) map.current.flyTo([focus.lat, focus.lon], 9) }, [focus])
+  return <div className="mapbox" ref={el} />
 }
 
 export default function App() {
   const [data, setData] = useState(null)
   const [err, setErr] = useState(false)
+  const [tab, setTab] = useState('home')
   const [selId, setSelId] = useState(null)
-  const [showZones, setShowZones] = useState(true)
+  const [pick, setPick] = useState(null)
+  const [layers, setLayers] = useState({ buoys: true, zones: true, incidents: true, animals: false })
+  const [rec, setRec] = useState(RECORDS[0])
   const [audio, setAudio] = useState(null)
   const [busy, setBusy] = useState(false)
-  const divRef = useRef(null)
-  const mapRef = useRef(null)
-  const layers = useRef({})
+  const [fStatus, setFStatus] = useState('all')
+  const [fType, setFType] = useState('all')
+  const [cmp, setCmp] = useState(50)
+  const [prefs, setPrefs] = useState({ push: true, sound: true, sms: false, zones: true, labels: true })
 
   async function load() {
-    try {
-      const r = await fetch(API + '/api/state')
-      setData(await r.json())
-      setErr(false)
-    } catch { setErr(true) }
+    try { const r = await fetch(API + '/api/state'); setData(await r.json()); setErr(false) } catch { setErr(true) }
   }
+  useEffect(() => { load(); const t = setInterval(load, 3000); return () => clearInterval(t) }, [])
 
-  useEffect(() => {
-    load()
-    const t = setInterval(load, 3000)
-    return () => clearInterval(t)
-  }, [])
-
-  useEffect(() => {
-    const map = L.map(divRef.current).setView([44.5, 47.8], 6)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '© OpenStreetMap © CARTO',
-    }).addTo(map)
-    layers.current = { zones: L.layerGroup().addTo(map), buoys: L.layerGroup().addTo(map), inc: L.layerGroup().addTo(map) }
-    mapRef.current = map
-    return () => map.remove()
-  }, [])
-
-  function select(inc) {
-    setSelId(inc.id)
-    mapRef.current?.flyTo([inc.lat, inc.lon], 9)
-  }
-
-  useEffect(() => {
-    if (!data || !mapRef.current) return
-    const { zones, buoys, inc } = layers.current
-    zones.clearLayers(); buoys.clearLayers(); inc.clearLayers()
-    if (showZones) {
-      data.risk_zones.forEach(z => {
-        L.polygon(z.polygon, { color: riskColor(z.risk), weight: 1, fillOpacity: 0.3 })
-          .bindPopup(`<b>${z.name}</b><br>Риск: ${Math.round(z.risk * 100)}%<br>${z.reason}`)
-          .addTo(zones)
-      })
-    }
-    data.buoys.forEach(b => {
-      L.marker([b.lat, b.lon], { icon: dot(b.status === 'critical' ? 'crit' : 'ok') })
-        .bindPopup(`<b>${b.name}</b><br>Темп.: ${b.temp}°C<br>Солёность: ${b.salinity}‰`)
-        .addTo(buoys)
-    })
-    data.incidents.forEach(i => {
-      L.marker([i.lat, i.lon], { icon: dot('inc') })
-        .on('click', () => select(i))
-        .addTo(inc)
-    })
-  }, [data, showZones])
-
-  async function simulate() {
-    await fetch(API + '/api/simulate', { method: 'POST' })
-    await load()
-  }
-
-  async function dispatch(id) {
-    await fetch(`${API}/api/incidents/${id}/dispatch`, { method: 'POST' })
-    await load()
-  }
-
-  async function uploadAudio(e) {
-    const f = e.target.files[0]
-    if (!f) return
+  const simulate = async () => { await fetch(API + '/api/simulate', { method: 'POST' }); load() }
+  const dispatch = async id => { await fetch(`${API}/api/incidents/${id}/dispatch`, { method: 'POST' }); load() }
+  async function upload(e) {
+    const f = e.target.files[0]; if (!f) return
     setBusy(true)
-    const fd = new FormData()
-    fd.append('file', f)
+    const fd = new FormData(); fd.append('file', f)
     try {
       const r = await fetch(API + '/api/analyze-audio', { method: 'POST', body: fd })
       if (!r.ok) throw new Error()
       setAudio(await r.json())
     } catch { setAudio({ error: 'Не удалось проанализировать файл' }) }
-    setBusy(false)
-    e.target.value = ''
+    setBusy(false); e.target.value = ''
   }
+  const openInc = i => { setSelId(i.id); setTab('incidents') }
 
-  const sel = data?.incidents.find(i => i.id === selId)
-  const crit = data?.buoys.filter(b => b.status === 'critical').length || 0
+  const incs = data?.incidents || []
+  const buoys = data?.buoys || []
+  const zones = data?.risk_zones || []
+  const newCount = incs.filter(i => i.status === 'Новый').length
+  const sel = incs.find(i => i.id === selId)
+  const hydro = data?.hydrology
+  const title = NAV.find(n => n[0] === tab)[1]
+  const list = incs.filter(i => (fStatus === 'all' || i.status === fStatus) && (fType === 'all' || i.type === fType))
+
+  const IncCard = i => (
+    <div key={i.id} className={`ev ${i.priority === 'high' ? 'high' : ''} ${i.id === selId ? 'sel' : ''}`} onClick={() => openInc(i)}>
+      <div>{TYPES[i.type]} {i.risk_zone && <span className="tag crit">в зоне риска</span>}<small>{i.message}</small></div>
+      <small>{i.time.slice(11)}</small>
+    </div>
+  )
 
   return (
-    <>
-      <div className="top">
-        <span className="logo">🛡 Эко-Щит Каспия</span>
-        <span className="badge">
-          {err ? '⚠ нет связи с сервером' : `${data?.buoys.length ?? 0} буев онлайн · тревог: ${crit}`}
-        </span>
-        <span className="spacer" />
-        <button className="btn" onClick={() => setShowZones(s => !s)}>
-          {showZones ? 'Скрыть' : 'Показать'} прогноз (тюлень / нерест)
-        </button>
-        <button className="btn danger" onClick={simulate}>Симуляция тревоги (Demo)</button>
-      </div>
+    <div className="app">
+      <aside className="side">
+        <div className="logo">🛡 Эко-Щит Каспия<small>Помощник инспектора ООПТ</small></div>
+        {NAV.map(([k, n, ic]) => <button key={k} className={'nav ' + (tab === k ? 'on' : '')} onClick={() => setTab(k)}><span>{ic}</span>{n}</button>)}
+      </aside>
 
-      <div className="main">
-        <div className="panel left">
-          <div className="card">
-            <h3>Гидрология</h3>
-            <div className="hydro">
-              <div><b>{data?.hydrology.avg_temp ?? '–'}°</b><span>вода</span></div>
-              <div><b>{data?.hydrology.avg_salinity ?? '–'}‰</b><span>солёность</span></div>
-              <div><b>{data?.hydrology.sea_level ?? '–'}</b><span>уровень, м</span></div>
-            </div>
-          </div>
-
-          <div className="card">
-            <h3>ИИ-анализатор аудио</h3>
-            <input type="file" accept=".wav,.mp3" onChange={uploadAudio} disabled={busy} />
-            {busy && <p className="muted">Анализ…</p>}
-            {audio?.error && <p className="muted">{audio.error}</p>}
-            {audio?.label && (
-              <>
-                <p><b>{audio.label}</b> · {audio.confidence}%</p>
-                <div className="bars">
-                  {audio.spectrum.map((v, i) => <i key={i} style={{ height: `${Math.max(4, v * 100)}%` }} />)}
-                </div>
-              </>
-            )}
-          </div>
-
-          <div className="card" style={{ flex: 1 }}>
-            <h3>Лента тревог</h3>
-            {data?.incidents.length === 0 && <p className="muted">Тревог нет. Нажмите «Симуляция».</p>}
-            {data?.incidents.map(i => (
-              <div key={i.id} className={`alert ${i.priority === 'high' ? 'high' : ''} ${i.id === selId ? 'sel' : ''}`} onClick={() => select(i)}>
-                {TYPES[i.type]}
-                {i.risk_zone && <span className="tag">в зоне риска</span>}
-                <small>{i.message}</small>
-                <small>{i.time.slice(11)} · {i.status}</small>
-              </div>
-            ))}
-          </div>
+      <div className="col">
+        <div className="top">
+          <h1>{title}</h1><span className="sp" />
+          <span className={'conn ' + (err ? 'bad' : '')}>{err ? '⚠ нет связи с сервером' : `● ${buoys.length} буев онлайн`}</span>
+          <input className="search" placeholder="Поиск по системе…" />
+          <button className="bell" onClick={() => setTab('incidents')}>🔔{newCount > 0 && <b>{newCount}</b>}</button>
+          <div className="me"><i>И</i><div>Инспектор<br /><span className="hint">Астраханский заповедник</span></div></div>
         </div>
 
-        <div className="map" ref={divRef} />
+        <div className={'content ' + (tab === 'map' ? 'flush' : '')}>
 
-        <div className="panel right">
-          {!sel && <p className="muted">Выберите тревогу в ленте или на карте.</p>}
-          {sel && (
-            <div className="card">
-              <h3>Карточка инцидента №{sel.id}</h3>
-              <p><b>{TYPES[sel.type]}</b></p>
-              <p className="muted">{sel.message}</p>
-              <p className="muted">
-                Точность ИИ: {Math.round(sel.confidence * 100)}%<br />
-                Приоритет: {sel.priority === 'high' ? 'ВЫСОКИЙ' : 'средний'}<br />
-                {sel.risk_zone ? '⚠ Внутри охраняемой зоны риска' : 'Вне зон риска'}<br />
-                Статус: {sel.status}
-              </p>
-              <div className="bars">
-                {fakeSpectrum(sel).map((v, i) => <i key={i} style={{ height: `${Math.max(4, v * 100)}%` }} />)}
+          {tab === 'home' && (<>
+            <div className="g4">
+              <Stat label="Активные угрозы" value={newCount} sub="требуют реакции" cls={newCount ? 'dark' : ''} />
+              <Stat label="Датчики и буи" value={buoys.length} sub={`тревога: ${buoys.filter(b => b.status === 'critical').length}`} />
+              <Stat label="Всего инцидентов" value={incs.length} sub="за текущую сессию" />
+              <Stat label="Зоны высокого риска" value={zones.filter(z => z.risk > 0.7).length} sub={`из ${zones.length}`} />
+            </div>
+            <div className="g2">
+              <Card title="Последние события" right={<button className="btn alt" onClick={simulate}>Симуляция тревоги</button>}>
+                {incs.length === 0 && <div className="sub">Тревог нет. Нажмите «Симуляция тревоги».</div>}
+                {incs.slice(0, 5).map(IncCard)}
+              </Card>
+              <Card title="Обзор карты"><div className="mini"><MapView data={data} layers={{ buoys: true, zones: true, incidents: true, animals: false }} /></div></Card>
+            </div>
+            <div className="g3 mt">
+              <Stat label="Температура воды" value={hydro?.avg_temp ?? '–'} unit="°C" />
+              <Stat label="Солёность" value={hydro?.avg_salinity ?? '–'} unit="‰" />
+              <Stat label="Уровень моря" value={hydro?.sea_level ?? '–'} unit="м" />
+            </div>
+          </>)}
+
+          {tab === 'map' && (
+            <div className="mapscreen">
+              <MapView data={data} layers={layers} onPick={setPick} focus={pick?.obj?.lat ? pick.obj : null} />
+              <div className="ov l">
+                <h4>Слои</h4>
+                {[['buoys', 'Датчики и буи'], ['zones', 'Охраняемые зоны'], ['animals', 'Животные'], ['incidents', 'Инциденты']].map(([k, n]) => (
+                  <label key={k}><input type="checkbox" checked={layers[k]} onChange={() => setLayers(l => ({ ...l, [k]: !l[k] }))} />{n}</label>
+                ))}
+                <button className="btn" style={{ width: '100%', marginTop: 6 }} onClick={simulate}>Симуляция тревоги</button>
               </div>
-              <div className="row">
-                <button className="btn" onClick={() => play(sel.type)}>▶ Прослушать</button>
-                <button className="btn ok" disabled={sel.status === 'Патруль направлен'} onClick={() => dispatch(sel.id)}>
-                  {sel.status === 'Патруль направлен' ? 'Патруль в пути' : 'Направить патруль'}
-                </button>
+              <div className="ov r">
+                <h4>Выбранный объект</h4>
+                {!pick && <div className="hint">Нажмите на маркер или зону на карте.</div>}
+                {pick?.kind === 'buoy' && <div><b>{pick.obj.name}</b><br />Вода: {pick.obj.temp}°C<br />Солёность: {pick.obj.salinity}‰<br />Статус: {pick.obj.status === 'critical' ? '🔴 тревога' : '🟢 норма'}</div>}
+                {pick?.kind === 'zone' && <div><b>{pick.obj.name}</b><br />Риск: {Math.round(pick.obj.risk * 100)}%<br /><span className="hint">{pick.obj.reason}</span></div>}
+                {pick?.kind === 'incident' && <div><b>{TYPES[pick.obj.type]}</b><br />{pick.obj.message}<br />Статус: {pick.obj.status}<br /><button className="btn" style={{ marginTop: 8 }} onClick={() => openInc(pick.obj)}>Открыть инцидент</button></div>}
               </div>
             </div>
           )}
+
+          {tab === 'migration' && (
+            <div className="g2" style={{ marginTop: 0, gridTemplateColumns: '1.6fr 1fr' }}>
+              <Card title="Миграция каспийского тюленя" right={<span className="hint">точки — наблюдения, сплошная — маршруты, пунктир — прогноз</span>}>
+                <div style={{ height: 520 }}><MapView data={data} layers={{ buoys: false, zones: true, incidents: false, animals: true }} center={[44.8, 47.8]} zoom={7} /></div>
+              </Card>
+              <div className="stack">
+                <Card title="Сезонная активность, %"><Chart data={SEASON} color="#D97B50" /><div className="sub">янв → дек (демо-данные)</div></Card>
+                <Stat label="Наблюдений за 7 дней" value="42" sub="демо-данные" />
+                <Stat label="Прогноз перехода в зону нереста" value="78" unit="%" sub="по модели риска" cls="dark" />
+                <Stat label="Риск беспокойства животных" value="Средний" sub="рядом с маршрутом зафиксирован катер" />
+              </div>
+            </div>
+          )}
+
+          {tab === 'audio' && (
+            <div className="g2" style={{ marginTop: 0 }}>
+              <Card title="Аудиозаписи с буёв">
+                {RECORDS.map(r => (
+                  <div key={r.id} className={`ev ${r.type !== 'wave' ? 'high' : ''} ${rec.id === r.id ? 'sel' : ''}`} onClick={() => setRec(r)}>
+                    <div>{r.name}<small>{r.label} · {r.conf}%</small></div>{r.type !== 'wave' && <span className="tag crit">угроза</span>}
+                  </div>
+                ))}
+                <div className="mt"><b style={{ fontSize: 13 }}>Загрузить свой файл (.wav / .mp3)</b><br /><input type="file" accept=".wav,.mp3" onChange={upload} disabled={busy} /></div>
+                {busy && <div className="sub">Анализ…</div>}
+                {audio?.error && <div className="sub">{audio.error}</div>}
+                {audio?.label && (
+                  <div className="mt">
+                    <span className={'tag ' + (audio.label === 'Шум волн/Норма' ? 'ok' : 'crit')}>{audio.label} · {audio.confidence}%</span>
+                    <div className="bars">{audio.spectrum.map((v, i) => <i key={i} style={{ height: Math.max(4, v * 100) + '%' }} />)}</div>
+                  </div>
+                )}
+              </Card>
+              <Card title="Анализ записи" cls={rec.type !== 'wave' ? '' : ''}>
+                <b>{rec.name}</b>
+                <Wave seed={rec.id * 7} type={rec.type} crit={rec.type !== 'wave'} />
+                <div className="row"><button className="btn" onClick={() => play(rec.type)}>▶ Воспроизвести</button></div>
+                <div className="mt">Результат ИИ: <span className={'tag ' + (rec.type !== 'wave' ? 'crit' : 'ok')}>{rec.label}</span><div className="sub">Уверенность: {rec.conf}%. {rec.type !== 'wave' ? 'Подозрительная активность — рекомендуется проверка.' : 'Нарушений не обнаружено.'}</div></div>
+              </Card>
+            </div>
+          )}
+
+          {tab === 'sat' && (
+            <div className="g2" style={{ marginTop: 0 }}>
+              <Card title="Сравнение снимков" right={<span className="hint">демо-изображения</span>}>
+                <div className="cmp">
+                  <div className="img a" />
+                  <div className="img b" style={{ clipPath: `inset(0 ${100 - cmp}% 0 0)` }}>
+                    <div className="sus" style={{ left: '28%', top: '40%', width: 70, height: 34 }} />
+                    <div className="sus" style={{ left: '55%', top: '62%', width: 50, height: 26 }} />
+                  </div>
+                  <span className="cap" style={{ left: 10 }}>12.09.2026</span><span className="cap" style={{ right: 10 }}>12.11.2026</span>
+                  <input type="range" min="5" max="95" value={cmp} onChange={e => setCmp(+e.target.value)} />
+                </div>
+              </Card>
+              <div className="stack">
+                <Card title="Обнаружено ИИ (демо)">
+                  <div className="ev high"><div>Скопление лодок<small>вероятность 87%</small></div><span className="tag crit">угроза</span></div>
+                  <div className="ev high"><div>Возможные сети в воде<small>вероятность 74%</small></div><span className="tag crit">угроза</span></div>
+                  <div className="ev"><div>Изменение береговой линии<small>вероятность 91%</small></div><span className="tag">наблюдение</span></div>
+                </Card>
+                <Stat label="Изменений между датами" value="3" sub="требуют проверки" />
+              </div>
+            </div>
+          )}
+
+          {tab === 'water' && (<>
+            <div className="g3">
+              <Stat label="Температура воды" value={hydro?.avg_temp ?? '–'} unit="°C" sub="среднее по буям" />
+              <Stat label="Солёность" value={hydro?.avg_salinity ?? '–'} unit="‰" sub="среднее по буям" />
+              <Stat label="Уровень моря" value={hydro?.sea_level ?? '–'} unit="м" sub="Балтийская система" cls="dark" />
+            </div>
+            <div className="g3 mt">
+              <Card title="Температура, 24 ч"><Chart data={series(3, 14, 0.6)} color="#D97B50" /></Card>
+              <Card title="Солёность, 24 ч"><Chart data={series(8, 8, 0.5)} color="#48543A" /></Card>
+              <Card title="Уровень, 24 ч"><Chart data={series(5, -28.3, 0.05)} color="#5b9d90" /></Card>
+            </div>
+            <Card title="Датчики" cls="mt">
+              <table className="tbl"><thead><tr><th>Буй</th><th>Вода, °C</th><th>Солёность, ‰</th><th>Статус</th></tr></thead>
+                <tbody>{buoys.map(b => <tr key={b.id}><td>{b.name}</td><td>{b.temp}</td><td>{b.salinity}</td><td><span className={'tag ' + (b.status === 'critical' ? 'crit' : 'ok')}>{b.status === 'critical' ? 'тревога' : 'норма'}</span></td></tr>)}</tbody></table>
+            </Card>
+          </>)}
+
+          {tab === 'incidents' && (
+            <div className="g2" style={{ marginTop: 0, gridTemplateColumns: '1.5fr 1fr' }}>
+              <Card title="Журнал происшествий" right={<button className="btn" onClick={simulate}>+ Создать инцидент</button>}>
+                <div className="row" style={{ marginBottom: 10 }}>
+                  <select value={fStatus} onChange={e => setFStatus(e.target.value)}><option value="all">Все статусы</option><option>Новый</option><option>Патруль направлен</option></select>
+                  <select value={fType} onChange={e => setFType(e.target.value)}><option value="all">Все типы</option>{Object.entries(TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+                </div>
+                <table className="tbl"><thead><tr><th>Время</th><th>Тип</th><th>Место</th><th>Приоритет</th><th>Статус</th></tr></thead>
+                  <tbody>{list.map(i => (
+                    <tr key={i.id} className="rw" onClick={() => setSelId(i.id)}>
+                      <td>{i.time.slice(11)}</td><td>{TYPES[i.type]}</td><td>{i.lat}, {i.lon}</td>
+                      <td><span className={'tag ' + (i.priority === 'high' ? 'crit' : '')}>{i.priority === 'high' ? 'высокий' : 'средний'}</span></td><td>{i.status}</td>
+                    </tr>))}</tbody></table>
+                {list.length === 0 && <div className="sub">Нет инцидентов. Нажмите «Создать инцидент».</div>}
+              </Card>
+              <Card title="Детали инцидента">
+                {!sel && <div className="sub">Выберите строку в таблице.</div>}
+                {sel && (<>
+                  <b style={{ fontSize: 18 }}>{TYPES[sel.type]} №{sel.id}</b>
+                  <div className="sub">{sel.message}</div>
+                  <div className="mt">Точность ИИ: <b>{Math.round(sel.confidence * 100)}%</b><br />Приоритет: <b>{sel.priority === 'high' ? 'ВЫСОКИЙ' : 'средний'}</b><br />{sel.risk_zone ? <span className="tag crit">⚠ внутри зоны риска</span> : 'Вне зон риска'}<br />Статус: {sel.status}</div>
+                  <Wave seed={sel.id * 11} type={sel.type} crit />
+                  <div className="row">
+                    <button className="btn alt" onClick={() => play(sel.type)}>▶ Прослушать</button>
+                    <button className="btn" disabled={sel.status === 'Патруль направлен'} onClick={() => dispatch(sel.id)}>{sel.status === 'Патруль направлен' ? 'Патруль в пути' : 'Направить патруль'}</button>
+                  </div>
+                </>)}
+              </Card>
+            </div>
+          )}
+
+          {tab === 'settings' && (
+            <div className="g3" style={{ marginTop: 0 }}>
+              <Card title="Профиль инспектора">
+                <div className="sw">Должность<b>Инспектор ООПТ</b></div>
+                <div className="sw">Территория<b>Астраханский заповедник</b></div>
+                <div className="sw">Смена<b>Дневная</b></div>
+              </Card>
+              <Card title="Уведомления">
+                {[['push', 'Push-уведомления'], ['sound', 'Звук тревоги'], ['sms', 'SMS при критической угрозе']].map(([k, n]) => (
+                  <div className="sw" key={k}>{n}<input type="checkbox" checked={prefs[k]} onChange={() => setPrefs(p => ({ ...p, [k]: !p[k] }))} /></div>
+                ))}
+              </Card>
+              <Card title="Карта и система">
+                {[['zones', 'Показывать зоны риска'], ['labels', 'Подписи городов']].map(([k, n]) => (
+                  <div className="sw" key={k}>{n}<input type="checkbox" checked={prefs[k]} onChange={() => setPrefs(p => ({ ...p, [k]: !p[k] }))} /></div>
+                ))}
+                <div className="sw">Сервер<b>{API}</b></div>
+                <div className="sw">Обновление данных<b>3 сек</b></div>
+              </Card>
+            </div>
+          )}
+
         </div>
       </div>
-    </>
+    </div>
   )
 }
