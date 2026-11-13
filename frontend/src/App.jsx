@@ -27,23 +27,8 @@ const seeded = s => () => { s = (s * 9301 + 49297) % 233280; return s / 233280 }
 const series = (seed, base, amp, n = 24) => { const r = seeded(seed); let v = base; return Array.from({ length: n }, () => (v += (r() - 0.5) * amp, +v.toFixed(2))) }
 
 function play(type) {
-  const C = window.AudioContext || window.webkitAudioContext
-  const ctx = new C(), g = ctx.createGain(); g.connect(ctx.destination)
-  const t = ctx.currentTime
-  if (type === 'gunshot') {
-    const len = ctx.sampleRate * 0.4, b = ctx.createBuffer(1, len, ctx.sampleRate), d = b.getChannelData(0)
-    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.12))
-    const s = ctx.createBufferSource(); s.buffer = b; s.connect(g); g.gain.value = 0.8; s.start()
-  } else {
-    const o = ctx.createOscillator(), lfo = ctx.createOscillator(), lg = ctx.createGain()
-    o.type = type === 'boat' ? 'sawtooth' : 'sine'
-    o.frequency.value = type === 'boat' ? 85 : 220
-    lfo.frequency.value = type === 'boat' ? 14 : 0.5
-    lg.gain.value = type === 'boat' ? 20 : 30
-    lfo.connect(lg); lg.connect(o.frequency)
-    g.gain.setValueAtTime(type === 'boat' ? 0.25 : 0.08, t); g.gain.linearRampToValueAtTime(0, t + 3)
-    o.connect(g); o.start(t); lfo.start(t); o.stop(t + 3); lfo.stop(t + 3)
-  }
+  const f = { gunshot: 'gun.mp3', boat: 'boat.mp3', wave: 'waves.wav', spill: 'waves.wav' }[type] || 'waves.wav'
+  new Audio('/sounds/' + f).play()
 }
 
 function Count({ v }) {
