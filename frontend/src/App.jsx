@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
-const API = `http://${window.location.hostname}:8000`
+const API = ''
 const TYPES = { boat: 'Браконьерский катер', gunshot: 'Выстрел', spill: 'Сброс / аномалия' }
 const NAV = [
   ['home', 'Главная'], ['map', 'Карта мониторинга'], ['migration', 'Миграция животных'],
